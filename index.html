@@ -24,10 +24,22 @@
   .sub { color: var(--muted); margin: 4px 0 16px; font-size: .9rem; }
   .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px;
     padding: 14px; margin-bottom: 14px; }
-  .opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px 22px; }
-  .opts fieldset { border: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
-  .opts legend { font-weight: 600; margin-bottom: 4px; font-size: .9rem; display: flex; align-items: center; gap: 6px; }
-  .opts .full { grid-column: 1 / -1; }
+  /* 設定區塊：固定 4 欄，視窗變窄時 2 欄 → 1 欄；fieldset 預設 min-width 會撐破格線，需歸零 */
+  .opts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px 22px; align-items: start; }
+  @media (max-width: 1100px) { .opts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 600px) { .opts { grid-template-columns: minmax(0, 1fr); } }
+  .opts fieldset { border: none; padding: 0; margin: 0; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .opts legend { font-weight: 600; margin-bottom: 4px; padding: 0; font-size: .9rem; display: flex; align-items: center; gap: 6px; }
+  .opts label { display: flex; align-items: flex-start; gap: 6px; line-height: 1.4; }
+  .opts label input { margin: 3px 0 0; flex: none; }
+  details.card > summary { list-style: none; }
+  details.card > summary::-webkit-details-marker { display: none; }
+  details.card > summary::after { content: "▾"; margin-left: auto; color: var(--muted); transition: transform .15s; }
+  details.card:not([open]) > summary::after { transform: rotate(90deg); }
+  details.card[open] > summary { margin-bottom: 12px; }
+  .kwbox { margin-bottom: 16px; }
+  .kwbox textarea { min-height: 56px; max-height: 240px; resize: vertical; margin: 6px 0; }
+  .kwbox .btns { gap: 6px; }
   label { font-size: .9rem; cursor: pointer; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
@@ -45,7 +57,7 @@
     border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
   .backdrop, #input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 10px; border: 0; border-radius: 0;
     font-family: Consolas, "Cascadia Code", monospace; font-size: .85rem; line-height: 1.5; letter-spacing: normal;
-    white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; overflow-x: hidden; overflow-y: scroll; }
+    white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; overflow-x: hidden; overflow-y: auto; }
   .backdrop { color: var(--text); pointer-events: none; scrollbar-color: transparent transparent; }
   .backdrop .hl { background: rgba(128, 128, 128, .28); color: var(--hl-c); border-radius: 3px; }
   #input { min-height: 0; resize: none; background: transparent; color: transparent; caret-color: var(--text); }
@@ -83,6 +95,7 @@
   th { color: var(--muted); font-weight: 600; }
   td.mono, .maptable td { font-family: Consolas, monospace; }
   .maptable { max-height: 260px; overflow: auto; }
+  .maptable th:first-child { width: 36%; white-space: nowrap; }
   details summary { cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 6px; }
   .hint { font-size: .8rem; color: var(--muted); }
   .drop { border: 2px dashed var(--border); border-radius: 10px; padding: 22px; text-align: center;
@@ -146,47 +159,6 @@
     </div>
   </div>
 
-  <!-- 選項 -->
-  <div class="card opts" id="opts">
-    <div class="full">
-      <label for="keywords"><b>額外要遮蔽的關鍵字</b>（逗號分隔，例如公司名、主機名稱）</label>
-      <input type="text" id="keywords" placeholder="例如：ACME, MY-PC, projectX">
-    </div>
-    <fieldset>
-      <legend><svg class="ic"><use href="#i-gear"/></svg>要遮蔽的項目</legend>
-      <label><input type="checkbox" id="optWin" checked> Windows 路徑</label>
-      <label><input type="checkbox" id="optNix" checked> Linux / macOS 路徑</label>
-      <label><input type="checkbox" id="optIp" checked> IP / MAC 位址</label>
-      <label><input type="checkbox" id="optEmail" checked> Email</label>
-      <label><input type="checkbox" id="optCred" checked> 帳號、密碼、Token</label>
-      <label><input type="checkbox" id="maskUserAll" checked> 其他位置出現的使用者名稱</label>
-    </fieldset>
-    <fieldset>
-      <legend>路徑取代方式</legend>
-      <label><input type="radio" name="mode" value="structure" checked> 保留結構（逐段遮蔽）</label>
-      <label><input type="radio" name="mode" value="keepName"> 只保留檔名</label>
-      <label><input type="radio" name="mode" value="full"> 整段路徑取代</label>
-    </fieldset>
-    <fieldset>
-      <legend>路徑選項</legend>
-      <label><input type="checkbox" id="keepCommon" checked> 保留系統常見目錄（Users、AppData…）</label>
-      <label><input type="checkbox" id="maskFile"> 遮蔽檔名（保留副檔名）</label>
-      <label><input type="checkbox" id="keepDrive" checked> 保留磁碟代號</label>
-      <label><input type="checkbox" id="allowSpace" checked> 目錄名稱可含空白</label>
-    </fieldset>
-    <fieldset>
-      <legend>代號與其他</legend>
-      <label><input type="checkbox" id="showType" checked> 代號顯示類型（如 [D-x7k2q]）</label>
-      <label><input type="checkbox" id="keepLoopback" checked> 保留 127.0.0.1、::1 等本機位址</label>
-      <label><input type="checkbox" id="maskOutName" checked> 下載的檔名也去識別化</label>
-      <label><input type="checkbox" id="remember" checked> 在本機瀏覽器記住對照表</label>
-      <div class="btns" style="margin-top:4px">
-        <button id="btnRegen"><svg class="ic"><use href="#i-refresh"/></svg>重新產生所有代號</button>
-        <span class="toast" id="toastRegen"></span>
-      </div>
-    </fieldset>
-  </div>
-
   <!-- 批次檔案 -->
   <div class="card">
     <div class="panel-head"><h2><svg class="ic"><use href="#i-file"/></svg>批次處理檔案</h2>
@@ -217,19 +189,6 @@
       <tbody id="fileBody"></tbody>
     </table></div>
     <textarea id="filePreview" readonly hidden style="margin-top:10px;min-height:200px"></textarea>
-  </div>
-
-  <!-- 對照表 -->
-  <div class="card">
-    <details>
-      <summary><svg class="ic"><use href="#i-table"/></svg>對照表（目前文字與檔案用到的代號）</summary>
-      <div class="btns" style="margin:8px 0">
-        <button id="btnCopyMap"><svg class="ic"><use href="#i-copy"/></svg>複製對照表 JSON</button>
-        <button id="btnDlMap"><svg class="ic"><use href="#i-download"/></svg>下載對照表</button>
-        <span class="toast" id="toastMap"></span>
-      </div>
-      <div class="maptable"><table><thead><tr><th>代號</th><th>原始內容</th></tr></thead><tbody id="mapBody"></tbody></table></div>
-    </details>
   </div>
 
   <!-- 還原 -->
@@ -282,6 +241,73 @@
       <textarea id="rfilePreview" readonly hidden style="margin-top:10px;min-height:200px"></textarea>
     </details>
   </div>
+
+  <!-- 設定（可摺疊） -->
+  <details class="card" id="optsCard" open>
+    <summary><svg class="ic"><use href="#i-gear"/></svg>設定與關鍵字 <span class="hint" id="kwCount"></span></summary>
+    <div class="kwbox">
+      <label for="keywords"><b>額外要遮蔽的關鍵字</b>（逗號或換行分隔，例如公司名、主機名稱）</label>
+      <textarea id="keywords" spellcheck="false" placeholder="例如：ACME, MY-PC, projectX"></textarea>
+      <div class="btns">
+        <button id="btnKwExport" title="下載關鍵字為 JSON 檔"><svg class="ic"><use href="#i-download"/></svg>打包下載</button>
+        <button id="btnKwImport" title="上傳 JSON 或文字檔，與目前關鍵字合併"><svg class="ic"><use href="#i-upload"/></svg>上傳匯入</button>
+        <button id="btnKwSaveDef" title="把目前關鍵字存成預設"><svg class="ic"><use href="#i-spark"/></svg>存為預設</button>
+        <button id="btnKwLoadDef" title="用預設關鍵字覆蓋目前內容"><svg class="ic"><use href="#i-refresh"/></svg>載入預設</button>
+        <button id="btnKwClear"><svg class="ic"><use href="#i-trash"/></svg>清空</button>
+        <span class="toast" id="toastKw"></span>
+      </div>
+      <input type="file" id="kwFile" accept=".json,.txt,.csv,text/plain,application/json" hidden>
+    </div>
+    <div class="opts" id="opts">
+    <fieldset>
+      <legend><svg class="ic"><use href="#i-gear"/></svg>要遮蔽的項目</legend>
+      <label><input type="checkbox" id="optWin" checked> Windows 路徑</label>
+      <label><input type="checkbox" id="optNix" checked> Linux / macOS 路徑</label>
+      <label><input type="checkbox" id="optIp" checked> IP / MAC 位址</label>
+      <label><input type="checkbox" id="optEmail" checked> Email</label>
+      <label><input type="checkbox" id="optCred" checked> 帳號、密碼、Token</label>
+      <label><input type="checkbox" id="maskUserAll" checked> 其他位置出現的使用者名稱</label>
+    </fieldset>
+    <fieldset>
+      <legend>路徑取代方式</legend>
+      <label><input type="radio" name="mode" value="structure" checked> 保留結構（逐段遮蔽）</label>
+      <label><input type="radio" name="mode" value="keepName"> 只保留檔名</label>
+      <label><input type="radio" name="mode" value="full"> 整段路徑取代</label>
+    </fieldset>
+    <fieldset>
+      <legend>路徑選項</legend>
+      <label><input type="checkbox" id="keepCommon" checked> 保留系統常見目錄（Users、AppData…）</label>
+      <label><input type="checkbox" id="maskFile"> 遮蔽檔名（保留副檔名）</label>
+      <label><input type="checkbox" id="keepDrive" checked> 保留磁碟代號</label>
+      <label><input type="checkbox" id="allowSpace" checked> 目錄名稱可含空白</label>
+    </fieldset>
+    <fieldset>
+      <legend>代號與其他</legend>
+      <label><input type="checkbox" id="showType" checked> 代號顯示類型（如 [D-x7k2q]）</label>
+      <label><input type="checkbox" id="keepLoopback" checked> 保留 127.0.0.1、::1 等本機位址</label>
+      <label><input type="checkbox" id="maskOutName" checked> 下載的檔名也去識別化</label>
+      <label><input type="checkbox" id="remember" checked> 在本機瀏覽器記住對照表</label>
+      <div class="btns" style="margin-top:4px">
+        <button id="btnRegen"><svg class="ic"><use href="#i-refresh"/></svg>重新產生所有代號</button>
+        <span class="toast" id="toastRegen"></span>
+      </div>
+    </fieldset>
+    </div>
+  </details>
+
+  <!-- 對照表 -->
+  <div class="card">
+    <details>
+      <summary><svg class="ic"><use href="#i-table"/></svg>對照表（目前文字與檔案用到的代號）</summary>
+      <div class="btns" style="margin:8px 0">
+        <button id="btnCopyMap"><svg class="ic"><use href="#i-copy"/></svg>複製對照表 JSON</button>
+        <button id="btnDlMap"><svg class="ic"><use href="#i-download"/></svg>下載對照表</button>
+        <span class="toast" id="toastMap"></span>
+      </div>
+      <div class="maptable"><table><thead><tr><th>代號</th><th>原始內容</th></tr></thead><tbody id="mapBody"></tbody></table></div>
+    </details>
+  </div>
+
 </div>
 
 <script>
@@ -474,7 +500,7 @@
         s = replaceOut(s, re, () => { c.user++; return tok('USER', u, ctx); });
       });
     }
-    $('keywords').value.split(',').map(x => x.trim()).filter(Boolean)
+    kwList($('keywords').value)
       .sort((a, b) => b.length - a.length).forEach(k => {
         s = replaceOut(s, new RegExp(escRe(k), 'gi'), () => { c.kw++; return tok('KW', k, ctx); });
       });
@@ -487,6 +513,12 @@
     return parts.length ? parts.join('、') : '沒有找到要遮蔽的內容';
   }
   const total = c => Object.values(c).reduce((a, b) => a + b, 0);
+
+  /* ---------- 關鍵字 ---------- */
+  const LS_KWDEF = 'anonymizer.kwdefault.v1';
+  const LS_UI = 'anonymizer.ui.v1';
+  const kwList = v => [...new Set(String(v || '').split(/[,，;；\r\n]+/).map(x => x.trim()).filter(Boolean))];
+  function updateKwCount() { const n = kwList($('keywords').value).length; $('kwCount').textContent = n ? `（關鍵字 ${n} 個）` : ''; }
 
   /* ---------- 選項 ---------- */
   const OPT_IDS = ['optWin', 'optNix', 'optIp', 'optEmail', 'optCred', 'maskUserAll', 'keepCommon', 'maskFile',
@@ -511,10 +543,11 @@
   function loadOpts() {
     try {
       const o = JSON.parse(localStorage.getItem(LS_OPTS) || 'null');
-      if (!o) return;
+      if (!o) { const d = localStorage.getItem(LS_KWDEF); if (d) $('keywords').value = d; updateKwCount(); return; }
       OPT_IDS.forEach(id => { if (typeof o[id] === 'boolean') $(id).checked = o[id]; });
       const r = document.querySelector(`input[name=mode][value="${o.mode}"]`); if (r) r.checked = true;
       if (typeof o.keywords === 'string') $('keywords').value = o.keywords;
+      updateKwCount();
       if (o.enc) $('enc').value = o.enc;
     } catch { /* 忽略 */ }
   }
@@ -741,6 +774,11 @@
   function usedAll() { return new Map([...usedText, ...usedFiles]); }
   function renderMap() {
     const tb = $('mapBody'); tb.innerHTML = '';
+    if (!usedAll().size) {
+      const tr = document.createElement('tr'), td = document.createElement('td');
+      td.colSpan = 2; td.className = 'hint'; td.textContent = '目前沒有代號：在 ① 貼上文字或加入檔案後，用到的代號會顯示在這裡。';
+      tr.append(td); tb.append(tr); return;
+    }
     for (const e of usedAll().values()) {
       const tr = document.createElement('tr');
       const a = document.createElement('td'); a.textContent = fmt(e);
@@ -863,7 +901,39 @@ Linux 主機：/home/wangxm/projects/acme-api/server.py 與 ~/notes/todo.md`;
   let tInput;
   $('input').addEventListener('scroll', () => { $('backdrop').scrollTop = $('input').scrollTop; });
   $('input').addEventListener('input', () => { paintBackdrop($('input').value, []); clearTimeout(tInput); tInput = setTimeout(() => { readOpts(); processText(); }, 120); });
-  $('keywords').addEventListener('input', () => { clearTimeout(tInput); tInput = setTimeout(processAll, 250); });
+  $('keywords').addEventListener('input', () => { updateKwCount(); clearTimeout(tInput); tInput = setTimeout(processAll, 250); });
+  const setKw = (list, msg) => { $('keywords').value = list.join(', '); updateKwCount(); processAll(); flash('toastKw', msg); };
+  $('btnKwExport').onclick = () => {
+    const list = kwList($('keywords').value);
+    if (!list.length) return flash('toastKw', '沒有關鍵字可下載');
+    download('anonymizer-keywords.json', JSON.stringify({ type: 'anonymizer-keywords', version: 1, keywords: list }, null, 2));
+  };
+  $('btnKwImport').onclick = () => $('kwFile').click();
+  $('kwFile').onchange = async e => {
+    const f = e.target.files[0]; e.target.value = '';
+    if (!f) return;
+    try {
+      const t = await f.text();
+      let list;
+      try { const j = JSON.parse(t); list = Array.isArray(j) ? j : j.keywords; if (!Array.isArray(list)) throw 0; list = list.map(String); }
+      catch { list = kwList(t); }
+      const merged = [...new Set([...kwList($('keywords').value), ...list.map(x => x.trim()).filter(Boolean)])];
+      setKw(merged, `已匯入，共 ${merged.length} 個`);
+    } catch (err) { console.warn('[anonymizer] 匯入關鍵字失敗', err); flash('toastKw', '匯入失敗'); }
+  };
+  $('btnKwSaveDef').onclick = () => {
+    try { localStorage.setItem(LS_KWDEF, kwList($('keywords').value).join(', ')); flash('toastKw', '已存為預設'); }
+    catch { flash('toastKw', '無法寫入本機儲存'); }
+  };
+  $('btnKwLoadDef').onclick = () => {
+    let d = null; try { d = localStorage.getItem(LS_KWDEF); } catch { /* 忽略 */ }
+    if (d === null) return flash('toastKw', '尚未設定預設');
+    setKw(kwList(d), '已載入預設');
+  };
+  $('btnKwClear').onclick = () => setKw([], '已清空');
+  // 設定區塊摺疊狀態
+  try { if (localStorage.getItem(LS_UI) === 'closed') $('optsCard').open = false; } catch { /* 忽略 */ }
+  $('optsCard').addEventListener('toggle', () => { try { localStorage.setItem(LS_UI, $('optsCard').open ? 'open' : 'closed'); } catch { /* 忽略 */ } });
   $('opts').querySelectorAll('input').forEach(el => el.addEventListener('change', () => {
     if (el.id === 'remember') cacheDirty = true;
     processAll();
