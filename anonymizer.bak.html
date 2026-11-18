@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Windows 路徑去識別化工具</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --text: #1f2328; --muted: #656d76;
+    --border: #d0d7de; --accent: #0969da; --accent-weak: #ddf4ff; --ok: #1a7f37;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0d1117; --card: #161b22; --text: #e6edf3; --muted: #8d96a0;
+      --border: #30363d; --accent: #4493f8; --accent-weak: #102a4c; --ok: #3fb950; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, "Segoe UI", "Microsoft JhengHei", sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.5; }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 20px 16px 40px; }
+  h1 { font-size: 1.35rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 16px; font-size: .9rem; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px; margin-bottom: 14px; }
+  .opts { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; }
+  .opts fieldset { border: none; padding: 0; margin: 0; display: flex; gap: 12px; flex-wrap: wrap; }
+  .opts legend { font-weight: 600; margin-bottom: 4px; font-size: .9rem; }
+  label { font-size: .9rem; cursor: pointer; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+  .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .panel-head h2 { font-size: 1rem; margin: 0; }
+  textarea, input[type=text] { width: 100%; font-family: Consolas, "Cascadia Code", monospace;
+    font-size: .85rem; background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
+  textarea { min-height: 260px; resize: vertical; }
+  textarea[readonly] { background: var(--card); }
+  button { font: inherit; font-size: .85rem; padding: 5px 12px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--card); color: var(--text); cursor: pointer; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button:hover { filter: brightness(1.05); }
+  .btns { display: flex; gap: 6px; }
+  .stat { font-size: .85rem; color: var(--muted); margin-top: 6px; }
+  .toast { color: var(--ok); font-size: .85rem; margin-left: 6px; }
+  table { width: 100%; border-collapse: collapse; font-family: Consolas, monospace; font-size: .8rem; }
+  th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); word-break: break-all; }
+  th { color: var(--muted); font-weight: 600; }
+  .maptable { max-height: 260px; overflow: auto; }
+  details summary { cursor: pointer; font-weight: 600; }
+  .hint { font-size: .8rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Windows 路徑去識別化工具</h1>
+  <p class="sub">把文字中的 Windows 路徑、使用者名稱換成代號，再貼給 AI。全部在瀏覽器本機處理，不會上傳。</p>
+
+  <div class="card opts">
+    <fieldset>
+      <legend>取代方式</legend>
+      <label><input type="radio" name="mode" value="structure" checked> 保留結構（逐段遮蔽）</label>
+      <label><input type="radio" name="mode" value="keepName"> 只保留檔名</label>
+      <label><input type="radio" name="mode" value="full"> 整段路徑取代</label>
+    </fieldset>
+    <fieldset>
+      <legend>選項</legend>
+      <label><input type="checkbox" id="keepCommon" checked> 保留系統常見目錄（Users、AppData…）</label>
+      <label><input type="checkbox" id="maskFile"> 遮蔽檔名（保留副檔名）</label>
+      <label><input type="checkbox" id="keepDrive" checked> 保留磁碟代號</label>
+      <label><input type="checkbox" id="allowSpace" checked> 目錄名稱可含空白</label>
+      <label><input type="checkbox" id="maskUserAll" checked> 文字中其他地方的使用者名稱也遮蔽</label>
+    </fieldset>
+    <div style="width:100%">
+      <label for="keywords"><b>額外要遮蔽的關鍵字</b>（逗號分隔，例如公司名、主機名稱）</label>
+      <input type="text" id="keywords" placeholder="例如：ACME, MY-PC, projectX">
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="panel-head"><h2>① 原始文字</h2>
+        <div class="btns"><button id="btnSample">範例</button><button id="btnClear">清除</button></div>
+      </div>
+      <textarea id="input" placeholder="貼上含有 Windows 路徑的文字、錯誤訊息、log…"></textarea>
+    </div>
+    <div class="card">
+      <div class="panel-head"><h2>② 去識別化結果</h2>
+        <div class="btns"><span class="toast" id="toastOut"></span><button class="primary" id="btnCopyOut">複製</button></div>
+      </div>
+      <textarea id="output" readonly></textarea>
+      <div class="stat" id="stat"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <details>
+      <summary>對照表（重新整理頁面後會消失，需要時請複製保存）</summary>
+      <div class="btns" style="margin:8px 0"><button id="btnCopyMap">複製對照表 JSON</button><span class="toast" id="toastMap"></span></div>
+      <div class="maptable"><table><thead><tr><th>代號</th><th>原始內容</th></tr></thead><tbody id="mapBody"></tbody></table></div>
+    </details>
+  </div>
+
+  <div class="card">
+    <details>
+      <summary>③ 還原 AI 回覆（把代號換回原始路徑）</summary>
+      <p class="hint">使用目前的對照表；若是之前存下的，請先把 JSON 貼到下方「匯入對照表」。</p>
+      <div class="grid">
+        <div>
+          <textarea id="aiReply" placeholder="貼上 AI 的回覆…" style="min-height:180px"></textarea>
+          <textarea id="mapImport" placeholder="（選用）匯入對照表 JSON" style="min-height:70px;margin-top:8px"></textarea>
+        </div>
+        <div>
+          <div class="btns" style="margin-bottom:6px"><button class="primary" id="btnRestore">還原</button><button id="btnCopyRestore">複製</button><span class="toast" id="toastRestore"></span></div>
+          <textarea id="restored" readonly style="min-height:180px"></textarea>
+        </div>
+      </div>
+    </details>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const COMMON = new Set(['users','user','public','default','appdata','local','locallow','roaming','temp','tmp',
+    'program files','program files (x86)','programdata','windows','system32','syswow64','desktop','documents',
+    'downloads','pictures','music','videos','onedrive','microsoft','src','lib','bin','obj','build','dist',
+    'node_modules','packages','debug','release','config','logs','log','cache','.git','.vscode','scripts','test','tests']);
+
+  let map = new Map();      // key(lowercase original) -> {token, original}
+  let counters = {};
+
+  function token(prefix, original) {
+    const key = prefix + '|' + original.toLowerCase();
+    if (map.has(key)) return map.get(key).token;
+    counters[prefix] = (counters[prefix] || 0) + 1;
+    const t = `[${prefix}${counters[prefix]}]`;
+    map.set(key, { token: t, original });
+    return t;
+  }
+
+  function buildPathRegex(allowSpace) {
+    const ns = String.raw`[^\\/:*?"<>|\s]`;          // 不含空白的字元
+    const sp = String.raw`[^\\/:*?"<>|\r\n]`;          // 可含空白
+    const start = String.raw`(?:\b[A-Za-z]:[\\/]|\\\\${ns}+[\\/])`;
+    const mid = `(?:${allowSpace ? sp : ns}+[\\\\/])*`;
+    const last = `${ns}*`;
+    return new RegExp(start + mid + last, 'g');
+  }
+
+  function escRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+  function maskFileName(name, opts) {
+    if (!name || !opts.maskFile) return name;
+    const i = name.lastIndexOf('.');
+    const ext = i > 0 ? name.slice(i) : '';
+    return token('F', name) + ext;
+  }
+
+  function transformPath(p, opts, users) {
+    // 拆出開頭（磁碟或 UNC）
+    let head = '', rest = p;
+    let m = p.match(/^([A-Za-z]:)([\\/])/);
+    if (m) { head = (opts.keepDrive ? m[1] : 'X:') + m[2]; rest = p.slice(m[0].length); }
+    else {
+      m = p.match(/^\\\\([^\\/]+)([\\/])/);
+      if (m) { head = '\\\\' + token('HOST', m[1]) + m[2]; rest = p.slice(m[0].length); }
+    }
+    const sepChar = p.includes('\\') ? '\\' : '/';
+    const parts = rest.split(/[\\/]/);
+    const fileName = parts.pop();           // 最後一段（可能是空字串）
+
+    if (opts.mode === 'full') return token('PATH', p);
+
+    if (opts.mode === 'keepName') {
+      const dir = p.slice(0, p.length - fileName.length);
+      return token('DIR', dir) + maskFileName(fileName, opts);
+    }
+
+    // structure
+    const out = parts.map((seg, idx) => {
+      if (!seg) return seg;
+      const prev = (parts[idx - 1] || '').toLowerCase();
+      if (prev === 'users' && !COMMON.has(seg.toLowerCase())) { users.add(seg); return token('USER', seg); }
+      if (opts.keepCommon && COMMON.has(seg.toLowerCase())) return seg;
+      return token('D', seg);
+    });
+    // 最後一段也可能是 Users 底下的名稱
+    let last = fileName;
+    if (last && (parts[parts.length - 1] || '').toLowerCase() === 'users' && !COMMON.has(last.toLowerCase())) {
+      users.add(last); last = token('USER', last);
+    } else if (last && opts.keepCommon && COMMON.has(last.toLowerCase()) && !last.includes('.')) {
+      // 保留
+    } else if (last && !last.includes('.') && opts.maskFile) {
+      last = token('D', last);
+    } else {
+      last = maskFileName(last, opts);
+    }
+    return head + out.concat([last]).join(sepChar);
+  }
+
+  function process() {
+    map = new Map(); counters = {};
+    const text = $('input').value;
+    const opts = {
+      mode: document.querySelector('input[name=mode]:checked').value,
+      keepCommon: $('keepCommon').checked,
+      maskFile: $('maskFile').checked,
+      keepDrive: $('keepDrive').checked,
+      allowSpace: $('allowSpace').checked,
+      maskUserAll: $('maskUserAll').checked,
+    };
+    const users = new Set();
+    // 先從所有路徑收集使用者名稱
+    const reUser = /[\\/]Users[\\/]([^\\/:*?"<>|\r\n]+?)(?=[\\/]|\s|$)/gi;
+    let um; while ((um = reUser.exec(text))) {
+      if (!COMMON.has(um[1].toLowerCase())) users.add(um[1]);
+    }
+
+    let count = 0;
+    const re = buildPathRegex(opts.allowSpace);
+    let out = text.replace(re, raw => {
+      // 去掉尾端標點
+      const mm = raw.match(/^(.*?)([.,;:)\]}'"`]*)$/s);
+      const p = mm[1], tail = mm[2];
+      if (!p || /^[A-Za-z]:$/.test(p)) return raw;
+      count++;
+      return transformPath(p, opts, users) + tail;
+    });
+
+    // 其他位置的使用者名稱
+    if (opts.maskUserAll) {
+      [...users].sort((a, b) => b.length - a.length).forEach(u => {
+        const t = token('USER', u);
+        out = out.replace(new RegExp(`(?<![\\w\\[])${escRe(u)}(?![\\w\\]])`, 'gi'), t);
+      });
+    }
+
+    // 額外關鍵字
+    $('keywords').value.split(',').map(s => s.trim()).filter(Boolean)
+      .sort((a, b) => b.length - a.length).forEach(k => {
+        const t = token('KW', k);
+        out = out.replace(new RegExp(escRe(k), 'gi'), t);
+      });
+
+    $('output').value = out;
+    $('stat').textContent = text ? `處理 ${count} 個路徑，對照表 ${map.size} 筆` : '';
+    renderMap();
+  }
+
+  function renderMap() {
+    const tb = $('mapBody'); tb.innerHTML = '';
+    for (const { token: t, original } of map.values()) {
+      const tr = document.createElement('tr');
+      const a = document.createElement('td'); a.textContent = t;
+      const b = document.createElement('td'); b.textContent = original;
+      tr.append(a, b); tb.append(tr);
+    }
+  }
+
+  function mapAsObject() {
+    const o = {}; for (const { token: t, original } of map.values()) o[t] = original; return o;
+  }
+
+  async function copy(text, toastId) {
+    try { await navigator.clipboard.writeText(text); flash(toastId, '已複製'); }
+    catch { flash(toastId, '複製失敗，請手動選取'); }
+  }
+  function flash(id, msg) { const el = $(id); el.textContent = msg; setTimeout(() => el.textContent = '', 1500); }
+
+  function restore() {
+    let dict = mapAsObject();
+    const imp = $('mapImport').value.trim();
+    if (imp) {
+      try { dict = Object.assign({}, dict, JSON.parse(imp)); }
+      catch { $('restored').value = '對照表 JSON 格式錯誤'; return; }
+    }
+    let s = $('aiReply').value;
+    Object.keys(dict).sort((a, b) => b.length - a.length).forEach(t => { s = s.split(t).join(dict[t]); });
+    $('restored').value = s;
+  }
+
+  const SAMPLE = String.raw`Error: ENOENT: no such file or directory, open 'C:\Users\WangXiaoMing\Documents\ACME\project-x\src\config.json'
+    at Object.openSync (node:fs:601:3)
+專案位置：D:\Work\ACME 客戶\報價系統\main.go
+輸出到 \\MY-PC\share\backup\2026\db.bak
+使用者 WangXiaoMing 的暫存檔：C:/Users/WangXiaoMing/AppData/Local/Temp/tmp123.log.`;
+
+  ['input', 'keywords'].forEach(id => $(id).addEventListener('input', process));
+  document.querySelectorAll('.opts input').forEach(el => el.addEventListener('change', process));
+  $('btnSample').onclick = () => { $('input').value = SAMPLE; if (!$('keywords').value) $('keywords').value = 'ACME, MY-PC'; process(); };
+  $('btnClear').onclick = () => { $('input').value = ''; process(); };
+  $('btnCopyOut').onclick = () => copy($('output').value, 'toastOut');
+  $('btnCopyMap').onclick = () => copy(JSON.stringify(mapAsObject(), null, 2), 'toastMap');
+  $('btnRestore').onclick = restore;
+  $('btnCopyRestore').onclick = () => copy($('restored').value, 'toastRestore');
+})();
+</script>
+</body>
+</html>
