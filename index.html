@@ -108,6 +108,7 @@
   <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></symbol>
   <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/></symbol>
   <symbol id="i-merge" viewBox="0 0 24 24"><path d="M6 3v6a6 6 0 0 0 6 6h6"/><path d="M15 12l3 3-3 3"/><path d="M6 21v-4"/></symbol>
+  <symbol id="i-zip" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M12 3v3M12 8v2M12 12v2"/><rect x="10" y="15" width="4" height="4" rx="1"/></symbol>
   <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
   <symbol id="i-table" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></symbol>
   <symbol id="i-input" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></symbol>
@@ -197,6 +198,7 @@
           <option value="utf-16le">UTF-16 LE</option>
           <option value="shift_jis">Shift_JIS</option>
         </select>
+        <button id="btnZip" disabled><svg class="ic"><use href="#i-zip"/></svg>打包 ZIP</button>
         <button id="btnDlAll" disabled><svg class="ic"><use href="#i-download"/></svg>全部下載</button>
         <button id="btnMergeDl" disabled><svg class="ic"><use href="#i-merge"/></svg>合併下載</button>
         <button id="btnMergeCopy" disabled><svg class="ic"><use href="#i-copy"/></svg>合併複製</button>
@@ -259,6 +261,7 @@
             <option value="utf-16le">UTF-16 LE</option>
             <option value="shift_jis">Shift_JIS</option>
           </select>
+          <button id="btnRZip" disabled><svg class="ic"><use href="#i-zip"/></svg>打包 ZIP</button>
           <button id="btnRDlAll" disabled><svg class="ic"><use href="#i-download"/></svg>全部下載</button>
           <button id="btnRMergeDl" disabled><svg class="ic"><use href="#i-merge"/></svg>合併下載</button>
           <button id="btnRMergeCopy" disabled><svg class="ic"><use href="#i-copy"/></svg>合併複製</button>
@@ -578,7 +581,7 @@
     const tb = $('fileBody'); tb.innerHTML = '';
     $('fileTable').hidden = !files.length;
     const ok = files.some(f => f.out !== undefined);
-    ['btnDlAll', 'btnMergeDl', 'btnMergeCopy'].forEach(id => ($(id).disabled = !ok));
+    ['btnZip', 'btnDlAll', 'btnMergeDl', 'btnMergeCopy'].forEach(id => ($(id).disabled = !ok));
     $('btnClearFiles').disabled = !files.length;
     if (!files.length) $('filePreview').hidden = true;
     files.forEach((it, idx) => {
@@ -607,13 +610,75 @@
     return files.filter(f => f.out !== undefined)
       .map(f => `===== ${f.outName} =====\n${f.out}`).join('\n\n');
   }
-  function download(name, text) {
+  function downloadBlob(name, blob) {
     try {
-      const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url; a.download = name; document.body.append(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 2000);
     } catch (err) { console.error('[anonymizer] 下載失敗', err); flash('toastFiles', '下載失敗'); }
+  }
+  function download(name, text) { downloadBlob(name, new Blob([text], { type: 'text/plain;charset=utf-8' })); }
+
+  /* ---------- ZIP（不壓縮 store 模式，不需外部套件） ---------- */
+  const CRC_TABLE = (() => {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); t[n] = c >>> 0; }
+    return t;
+  })();
+  function crc32(u8) {
+    let c = 0xFFFFFFFF;
+    for (let i = 0; i < u8.length; i++) c = CRC_TABLE[(c ^ u8[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+  function makeZip(items) {   // items: [{name, text}]
+    const enc = new TextEncoder(), chunks = [], central = [];
+    const d = new Date();
+    const dosTime = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+    const dosDate = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+    let offset = 0;
+    for (const it of items) {
+      const nameB = enc.encode(it.name), data = enc.encode(it.text), crc = crc32(data);
+      const lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(8, 0, true);
+      lh.setUint16(10, dosTime, true); lh.setUint16(12, dosDate, true); lh.setUint32(14, crc, true);
+      lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true); lh.setUint16(26, nameB.length, true); lh.setUint16(28, 0, true);
+      chunks.push(new Uint8Array(lh.buffer), nameB, data);
+      const ch = new DataView(new ArrayBuffer(46));
+      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true); ch.setUint16(10, 0, true);
+      ch.setUint16(12, dosTime, true); ch.setUint16(14, dosDate, true); ch.setUint32(16, crc, true);
+      ch.setUint32(20, data.length, true); ch.setUint32(24, data.length, true); ch.setUint16(28, nameB.length, true);
+      ch.setUint16(30, 0, true); ch.setUint16(32, 0, true); ch.setUint16(34, 0, true); ch.setUint16(36, 0, true);
+      ch.setUint32(38, 0, true); ch.setUint32(42, offset, true);
+      central.push(new Uint8Array(ch.buffer), nameB);
+      offset += 30 + nameB.length + data.length;
+    }
+    const cdSize = central.reduce((a, c) => a + c.length, 0);
+    const end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true); end.setUint16(4, 0, true); end.setUint16(6, 0, true);
+    end.setUint16(8, items.length, true); end.setUint16(10, items.length, true);
+    end.setUint32(12, cdSize, true); end.setUint32(16, offset, true); end.setUint16(20, 0, true);
+    return new Blob([...chunks, ...central, new Uint8Array(end.buffer)], { type: 'application/zip' });
+  }
+  function stamp() {
+    const d = new Date(), p = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+  }
+  function zipFiles(list, prefix, toastId) {
+    const ok = list.filter(f => f.out !== undefined);
+    if (!ok.length) return;
+    const seen = new Map();
+    const entries = ok.map(f => {
+      let name = (f.outName || 'file.txt').replace(/[\\/:*?"<>|]/g, '_');
+      const k = name.toLowerCase(), c = seen.get(k) || 0;
+      seen.set(k, c + 1);
+      if (c) { const i = name.lastIndexOf('.'); name = i > 0 ? `${name.slice(0, i)} (${c + 1})${name.slice(i)}` : `${name} (${c + 1})`; }
+      return { name, text: f.out };
+    });
+    try {
+      downloadBlob(`${prefix}-${stamp()}.zip`, makeZip(entries));
+      flash(toastId, `已打包 ${entries.length} 個檔案`);
+    } catch (err) { console.error('[anonymizer] 打包失敗', err); flash(toastId, '打包失敗'); }
   }
 
   /* ---------- 文字區 ---------- */
@@ -754,7 +819,7 @@
     const tb = $('rfileBody'); tb.innerHTML = '';
     $('rfileTable').hidden = !rfiles.length;
     const ok = rfiles.some(f => f.out !== undefined);
-    ['btnRDlAll', 'btnRMergeDl', 'btnRMergeCopy'].forEach(id => ($(id).disabled = !ok));
+    ['btnRZip', 'btnRDlAll', 'btnRMergeDl', 'btnRMergeCopy'].forEach(id => ($(id).disabled = !ok));
     $('btnRClear').disabled = !rfiles.length;
     if (!rfiles.length) $('rfilePreview').hidden = true;
     rfiles.forEach((it, idx) => {
@@ -819,6 +884,7 @@ Linux 主機：/home/wangxm/projects/acme-api/server.py 與 ~/notes/todo.md`;
   };
   $('btnMergeDl').onclick = () => download(opts.maskOutName ? 'merged.anon.txt' : 'merged.anon.txt', mergedText());
   $('btnMergeCopy').onclick = () => copy(mergedText(), 'toastFiles');
+  $('btnZip').onclick = () => zipFiles(files, 'anonymized', 'toastFiles');
   $('btnClearFiles').onclick = () => { files = []; processFiles(); };
 
   $('btnCopyMap').onclick = () => copy(JSON.stringify(mapObject(usedAll().values()), null, 2), 'toastMap');
@@ -838,6 +904,7 @@ Linux 主機：/home/wangxm/projects/acme-api/server.py 與 ~/notes/todo.md`;
   };
   $('btnRMergeDl').onclick = () => download('merged.restored.txt', mergedRestoreText());
   $('btnRMergeCopy').onclick = () => copy(mergedRestoreText(), 'toastRFiles');
+  $('btnRZip').onclick = () => zipFiles(rfiles, 'restored', 'toastRFiles');
   $('btnRClear').onclick = () => { rfiles = []; renderRestoreFiles(); };
 
   /* ---------- 標示顏色（循環切換、記憶選擇） ---------- */
