@@ -39,6 +39,23 @@
   textarea, input[type=text] { width: 100%; }
   textarea { min-height: 260px; resize: vertical; }
   textarea[readonly] { background: var(--card); }
+  #input, .outbox { height: 300px; min-height: 120px; max-height: 70vh; }
+  #input { background: var(--card); padding: 10px; border-radius: 8px; }
+  .outbox { max-height: 70vh; overflow: auto; resize: vertical; white-space: pre-wrap;
+    word-break: break-all; font-family: Consolas, "Cascadia Code", monospace; font-size: .85rem;
+    background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
+  .outbox .hl { background: rgba(128, 128, 128, .28); border: 1px solid rgba(128, 128, 128, .55); color: var(--hl-c); border-radius: 4px; padding: 0 3px; }
+  :root, :root[data-hl="0"] { --hl-c: #2da44e; }
+  :root[data-hl="1"] { --hl-c: #0969da; }
+  :root[data-hl="2"] { --hl-c: #bf8700; }
+  :root[data-hl="3"] { --hl-c: var(--text); }
+  @media (prefers-color-scheme: dark) {
+    :root, :root[data-hl="0"] { --hl-c: #7ee787; }
+    :root[data-hl="1"] { --hl-c: #79c0ff; }
+    :root[data-hl="2"] { --hl-c: #e3b341; }
+    :root[data-hl="3"] { --hl-c: var(--text); }
+  }
+  .swatch { width: 10px; height: 10px; border-radius: 50%; background: var(--hl-c); border: 1px solid var(--border); flex: none; }
   select { padding: 4px 8px; font-family: inherit; }
   button { font: inherit; font-size: .85rem; padding: 5px 12px; border-radius: 6px;
     border: 1px solid var(--border); background: var(--card); color: var(--text); cursor: pointer;
@@ -107,11 +124,11 @@
     <div class="card">
       <div class="panel-head"><h2><svg class="ic"><use href="#i-shield"/></svg>② 去識別化結果</h2>
         <div class="btns"><span class="toast" id="toastOut"></span>
+          <button id="btnHl" title="切換標示文字顏色"><svg class="ic"><use href="#i-refresh"/></svg> <span class="swatch"></span><span id="hlName"></span></button>
           <button class="primary" id="btnCopyOut"><svg class="ic"><use href="#i-copy"/></svg>複製</button>
         </div>
       </div>
-      <textarea id="output" readonly></textarea>
-      <div class="stat" id="stat"></div>
+      <div id="output" class="outbox" tabindex="0"></div>
     </div>
   </div>
 
@@ -559,11 +576,23 @@
   }
 
   /* ---------- 文字區 ---------- */
+  let outputText = '';
+  function renderOutput(text, used) {
+    const box = $('output');
+    box.textContent = '';
+    const known = new Set([...used.values()].map(fmt));
+    text.split(TOKEN_SPLIT).forEach((part, i) => {
+      if (i % 2 && known.has(part)) {
+        const sp = document.createElement('span');
+        sp.className = 'hl'; sp.textContent = part; box.append(sp);
+      } else if (part) box.append(document.createTextNode(part));
+    });
+  }
   function processText() {
     usedText = new Map();
     const r = anonymize($('input').value, usedText);
-    $('output').value = r.out;
-    $('stat').textContent = $('input').value ? statText(r.c) : '';
+    outputText = r.out;
+    renderOutput(r.out, usedText);
     renderMap(); saveCache();
   }
   function processAll() { readOpts(); saveOpts(); processText(); processFiles(); }
@@ -622,7 +651,7 @@ Linux 主機：/home/wangxm/projects/acme-api/server.py 與 ~/notes/todo.md`;
   }));
   $('btnSample').onclick = () => { $('input').value = SAMPLE; if (!$('keywords').value) $('keywords').value = 'ACME, MY-PC'; processAll(); };
   $('btnClear').onclick = () => { $('input').value = ''; processAll(); };
-  $('btnCopyOut').onclick = () => copy($('output').value, 'toastOut');
+  $('btnCopyOut').onclick = () => copy(outputText, 'toastOut');
   $('btnRegen').onclick = () => { cache.clear(); ids.clear(); cacheDirty = true; processAll(); flash('toastRegen', '已重新產生'); };
 
   $('drop').onclick = () => $('fileInput').click();
@@ -642,6 +671,22 @@ Linux 主機：/home/wangxm/projects/acme-api/server.py 與 ~/notes/todo.md`;
   $('btnDlMap').onclick = () => download('anonymizer-map.json', JSON.stringify(mapObject(usedAll().values()), null, 2));
   $('btnRestore').onclick = restore;
   $('btnCopyRestore').onclick = () => copy($('restored').value, 'toastRestore');
+
+  /* ---------- 標示顏色（循環切換、記憶選擇） ---------- */
+  const HL_NAMES = ['綠', '藍', '琥珀', '灰'];
+  const LS_HL = 'anonymizer.hl.v1';
+  let hlIdx = 0;
+  function applyHl() {
+    document.documentElement.dataset.hl = String(hlIdx);
+    $('hlName').textContent = HL_NAMES[hlIdx];
+  }
+  try { const v = parseInt(localStorage.getItem(LS_HL), 10); if (v >= 0 && v < HL_NAMES.length) hlIdx = v; } catch { /* 忽略 */ }
+  $('btnHl').onclick = () => {
+    hlIdx = (hlIdx + 1) % HL_NAMES.length;
+    applyHl();
+    try { localStorage.setItem(LS_HL, String(hlIdx)); } catch { /* 忽略 */ }
+  };
+  applyHl();
 
   // 初始化
   loadOpts(); readOpts(); loadCache(); processAll();
