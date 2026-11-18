@@ -266,6 +266,8 @@
       <label><input type="checkbox" id="optIp" checked> IP / MAC 位址</label>
       <label><input type="checkbox" id="optEmail" checked> Email</label>
       <label><input type="checkbox" id="optCred" checked> 帳號、密碼、Token</label>
+      <label><input type="checkbox" id="optKey" checked> 私鑰（PRIVATE KEY 區塊）</label>
+      <label><input type="checkbox" id="optDev" checked> 設備設定檔密碼（Cisco / Juniper / Fortinet）</label>
       <label><input type="checkbox" id="maskUserAll" checked> 其他位置出現的使用者名稱</label>
     </fieldset>
     <fieldset>
@@ -400,6 +402,48 @@
     if (opts.nix) alts.push(`(?<nix>${nix})`);
     return alts.length ? new RegExp(alts.join('|'), 'gu') : null;
   }
+  // 私鑰：完整區塊（BEGIN…END）；第二個規則處理被截斷、缺少 END 的情況（遮蔽後續的標頭與 Base64 行）
+  const RE_PEM = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----/g;
+  const RE_PEM_CUT = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----(?:\r?\n(?:[A-Za-z][A-Za-z0-9-]*:[^\r\n]*|[A-Za-z0-9+\/=]{8,}[ \t]*|[ \t]*(?=\r?\n[A-Za-z0-9+\/=]{8,}|\r?\n[A-Za-z][A-Za-z0-9-]*:)))*/g;
+  /* ---------- 網路設備設定檔（Cisco / Arista、Juniper、Fortinet）---------- */
+  // 每條規則只遮蔽「值」，保留關鍵字與引號，方便看出是哪一行。空白一律用 [ \t]，避免跨行誤判。
+  const devRule = (prefix, kind = 'SECRET', min = 1, look = '') =>
+    ({ kind, re: new RegExp(`(${prefix})(["']?)(?![0-9]["']?(?:[ \\t]|$)|ENC\\b)([^\\s;{}"']{${min},})\\2${look}`, 'gim') });
+  const DEVICE_RULES = [
+    // Cisco / Arista
+    devRule(String.raw`\busername[ \t]+\S+(?:[ \t]+\S+){0,4}?[ \t]+(?:password|secret)[ \t]+(?:[0-9][ \t]+)?`),
+    devRule(String.raw`\benable[ \t]+(?:secret|password)[ \t]+(?:level[ \t]+\d+[ \t]+)?(?:[0-9][ \t]+)?`),
+    devRule(String.raw`\bntp[ \t]+authentication-key[ \t]+\d+[ \t]+(?:md5|sha1|sha2|cmac)[ \t]+(?:[0-9][ \t]+)?`),
+    devRule(String.raw`\bmessage-digest-key[ \t]+\d+[ \t]+md5[ \t]+(?:[0-9][ \t]+)?`),
+    devRule(String.raw`\bsnmp-server[ \t]+community[ \t]+`),
+    devRule(String.raw`\b(?:tacacs-server|radius-server)[ \t]+key[ \t]+(?:[0-9][ \t]+)?`),
+    devRule(String.raw`\bisakmp[ \t]+key[ \t]+(?:[0-9][ \t]+)?`),
+    devRule(String.raw`\bwpa-psk[ \t]+(?:ascii|hex)[ \t]+(?:[0-9][ \t]+)?`),
+    devRule(String.raw`\bppp[ \t]+(?:chap|pap)[ \t]+password[ \t]+(?:[0-9][ \t]+)?`),
+    // Fortinet（必須在 Juniper 的 secret 規則之前）
+    devRule(String.raw`\bset[ \t]+[\w-]+[ \t]+ENC[ \t]+`),
+    devRule(String.raw`\bset[ \t]+(?:password|passwd|psksecret)[ \t]+`),
+    // Cisco：帶類型編號（0/5/7/8/9）的密碼
+    devRule(String.raw`\b(?:password|secret|key-string|authentication-key)[ \t]+[0-9][ \t]+`, 'SECRET', 4),
+    devRule(String.raw`^[ \t]+key[ \t]+[0-9][ \t]+`, 'SECRET', 8),   // radius / tacacs server 區塊內的 key 7 <hash>
+    // Juniper
+    devRule(String.raw`\b(?:encrypted-password|authentication-key|secret|ascii-text)[ \t]+`),
+    devRule(String.raw`\bsnmp[ \t]+community[ \t]+`),
+    devRule(String.raw`\bcommunity[ \t]+`, 'SECRET', 1, String.raw`(?=\s*\{\s*authorization\b)`),
+    devRule(String.raw`\blogin[ \t]+user[ \t]+`, 'USER'),
+    devRule(String.raw`\buser[ \t]+`, 'USER', 1, String.raw`(?=[ \t]*\{)`),
+    // Cisco：使用者名稱（密碼規則之後才處理）
+    devRule(String.raw`\busername[ \t]+`, 'USER'),
+  ];
+  const RE_CRYPT = /\$[0-9]{1,2}\$[A-Za-z0-9.\/$\-]{6,}/g;   // $1$ $5$ $6$ $8$ $9$ 等雜湊字串
+  const RE_MAC_CISCO = /(?<![0-9A-Fa-f.])[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4}(?![0-9A-Fa-f.])/g;
+  function applyDevice(s, ctx, c) {
+    for (const { kind, re } of DEVICE_RULES) {
+      s = replaceOut(s, re, (m, pre, q, v) => { c.dev++; if (kind === 'USER') ctx.users.add(v); return pre + q + tok(kind, v, ctx) + q; });
+    }
+    return replaceOut(s, RE_CRYPT, m => { c.dev++; return tok('SECRET', m, ctx); });
+  }
+
   const RE_EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
   const RE_URLCRED = /\b([a-z][a-z0-9+.-]*:\/\/)([^\s:@\/]+):([^\s@\/]+)@/gi;
   const RE_KV = /\b(username|user|uid|login|account|acct|password|passwd|pwd|pass|access[_-]?token|token|api[_-]?key|apikey|client[_-]?secret|secret|auth)(\s*[:=]\s*)(["']?)([^\s"',;&]+)\3/gi;
@@ -457,7 +501,7 @@
   /* ---------- 主流程 ---------- */
   function anonymize(text, used) {
     const ctx = { used, users: new Set() };
-    const c = { path: 0, ip: 0, email: 0, cred: 0, user: 0, kw: 0 };
+    const c = { path: 0, ip: 0, email: 0, cred: 0, key: 0, dev: 0, user: 0, kw: 0 };
     if (!text) return { out: '', c };
     let s = text;
 
@@ -466,6 +510,11 @@
     let um;
     while ((um = reUser.exec(text))) if (!COMMON.has(lc(um[1]))) ctx.users.add(um[1]);
 
+    if (opts.key) {
+      s = replaceOut(s, RE_PEM, m => { c.key++; return tok('KEY', m, ctx); });
+      s = replaceOut(s, RE_PEM_CUT, m => { c.key++; return tok('KEY', m, ctx); });
+    }
+    if (opts.dev) s = applyDevice(s, ctx, c);
     if (opts.cred) {
       s = replaceOut(s, RE_URLCRED, (m, sch, u, p) => { c.cred++; ctx.users.add(u); return sch + tok('USER', u, ctx) + ':' + tok('SECRET', p, ctx) + '@'; });
       s = replaceOut(s, RE_BEARER, (m, k, sp, v) => { c.cred++; return k + sp + tok('SECRET', v, ctx); });
@@ -479,6 +528,7 @@
     if (opts.email) s = replaceOut(s, RE_EMAIL, m => { c.email++; return tok('EMAIL', m, ctx); });
     if (opts.ip) {
       s = replaceOut(s, RE_MAC, m => { c.ip++; return tok('MAC', m, ctx); });
+      s = replaceOut(s, RE_MAC_CISCO, m => { c.ip++; return tok('MAC', m, ctx); });
       s = replaceOut(s, RE_IPV4, m => (opts.keepLoopback && LOOPBACK.test(m)) ? m : (c.ip++, tok('IP', m, ctx)));
       s = replaceOut(s, RE_IPV6, m => (opts.keepLoopback && LOOPBACK.test(m)) ? m : (c.ip++, tok('IP', m, ctx)));
     }
@@ -508,7 +558,7 @@
   }
 
   function statText(c) {
-    const names = { path: '路徑', ip: 'IP/MAC', email: 'Email', cred: '帳密', user: '使用者', kw: '關鍵字' };
+    const names = { path: '路徑', ip: 'IP/MAC', email: 'Email', cred: '帳密', key: '私鑰', dev: '設備密碼', user: '使用者', kw: '關鍵字' };
     const parts = Object.keys(names).filter(k => c[k]).map(k => `${names[k]} ${c[k]}`);
     return parts.length ? parts.join('、') : '沒有找到要遮蔽的內容';
   }
@@ -521,12 +571,12 @@
   function updateKwCount() { const n = kwList($('keywords').value).length; $('kwCount').textContent = n ? `（關鍵字 ${n} 個）` : ''; }
 
   /* ---------- 選項 ---------- */
-  const OPT_IDS = ['optWin', 'optNix', 'optIp', 'optEmail', 'optCred', 'maskUserAll', 'keepCommon', 'maskFile',
+  const OPT_IDS = ['optWin', 'optNix', 'optIp', 'optEmail', 'optCred', 'optKey', 'optDev', 'maskUserAll', 'keepCommon', 'maskFile',
     'keepDrive', 'allowSpace', 'showType', 'keepLoopback', 'maskOutName', 'remember'];
   function readOpts() {
     opts = {
       win: $('optWin').checked, nix: $('optNix').checked, ip: $('optIp').checked, email: $('optEmail').checked,
-      cred: $('optCred').checked, maskUserAll: $('maskUserAll').checked,
+      cred: $('optCred').checked, key: $('optKey').checked, dev: $('optDev').checked, maskUserAll: $('maskUserAll').checked,
       mode: document.querySelector('input[name=mode]:checked').value,
       keepCommon: $('keepCommon').checked, maskFile: $('maskFile').checked, keepDrive: $('keepDrive').checked,
       allowSpace: $('allowSpace').checked, showType: $('showType').checked, keepLoopback: $('keepLoopback').checked,
