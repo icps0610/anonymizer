@@ -39,8 +39,18 @@
   textarea, input[type=text] { width: 100%; }
   textarea { min-height: 260px; resize: vertical; }
   textarea[readonly] { background: var(--card); }
-  #input, .outbox { height: 300px; min-height: 120px; max-height: 70vh; }
-  #input { background: var(--card); padding: 10px; border-radius: 8px; }
+  .outbox { height: 300px; min-height: 120px; max-height: 70vh; }
+  /* ① 原始文字：下層 backdrop 負責標色，上層 textarea 文字透明、只負責輸入 */
+  .editor { position: relative; height: 300px; min-height: 120px; max-height: 70vh; resize: vertical; overflow: hidden;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
+  .backdrop, #input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 10px; border: 0; border-radius: 0;
+    font-family: Consolas, "Cascadia Code", monospace; font-size: .85rem; line-height: 1.5; letter-spacing: normal;
+    white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; overflow-x: hidden; overflow-y: scroll; }
+  .backdrop { color: var(--text); pointer-events: none; scrollbar-color: transparent transparent; }
+  .backdrop .hl { background: rgba(128, 128, 128, .28); color: var(--hl-c); border-radius: 3px; }
+  #input { min-height: 0; resize: none; background: transparent; color: transparent; caret-color: var(--text); }
+  #input::placeholder { color: var(--muted); }
+  #input::selection { color: transparent; background: rgba(9, 105, 218, .3); }
   .outbox { max-height: 70vh; overflow: auto; resize: vertical; white-space: pre-wrap;
     word-break: break-all; font-family: Consolas, "Cascadia Code", monospace; font-size: .85rem;
     background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
@@ -119,7 +129,10 @@
           <button id="btnClear"><svg class="ic"><use href="#i-trash"/></svg>清除</button>
         </div>
       </div>
-      <textarea id="input" placeholder="貼上含有路徑、IP、帳號的文字、錯誤訊息、log…"></textarea>
+      <div class="editor">
+        <div class="backdrop" id="backdrop" aria-hidden="true"></div>
+        <textarea id="input" spellcheck="false" placeholder="貼上含有路徑、IP、帳號的文字、錯誤訊息、log…"></textarea>
+      </div>
     </div>
     <div class="card">
       <div class="panel-head"><h2><svg class="ic"><use href="#i-shield"/></svg>② 去識別化結果</h2>
@@ -588,11 +601,46 @@
       } else if (part) box.append(document.createTextNode(part));
     });
   }
+  // 依「原文 ↔ 結果」逐字對齊，找出 ① 中被取代的區段（長度不符時放棄標示，避免標錯）
+  function inputSpans(src, out, used) {
+    const byTok = new Map();
+    for (const e of used.values()) byTok.set(fmt(e), e);
+    const spans = [];
+    let ip = 0;
+    out.split(TOKEN_SPLIT).forEach((part, i) => {
+      const e = (i % 2) ? byTok.get(part) : null;
+      if (!e) { ip += part.length; return; }
+      let len = e.original.length;
+      if (e.prefix === 'F') { const d = e.original.lastIndexOf('.'); if (d > 0) len = d; }  // 副檔名保留在結果中
+      spans.push([ip, ip + len]);
+      ip += len;
+    });
+    return ip === src.length ? spans : [];
+  }
+  function paintBackdrop(src, spans) {
+    const bd = $('backdrop');
+    bd.textContent = '';
+    let pos = 0;
+    for (const [a, b] of spans) {
+      if (a > pos) bd.append(document.createTextNode(src.slice(pos, a)));
+      const sp = document.createElement('span');
+      sp.className = 'hl'; sp.textContent = src.slice(a, b); bd.append(sp);
+      pos = b;
+    }
+    if (pos < src.length) bd.append(document.createTextNode(src.slice(pos)));
+    if (src.endsWith('\n')) bd.append(document.createTextNode(' '));   // 保留最後一個空行的高度
+    bd.scrollTop = $('input').scrollTop;
+  }
+  function renderInput() {
+    const src = $('input').value;
+    paintBackdrop(src, inputSpans(src, outputText, usedText));
+  }
   function processText() {
     usedText = new Map();
     const r = anonymize($('input').value, usedText);
     outputText = r.out;
     renderOutput(r.out, usedText);
+    renderInput();
     renderMap(); saveCache();
   }
   function processAll() { readOpts(); saveOpts(); processText(); processFiles(); }
@@ -643,7 +691,8 @@ Linux 主機：/home/wangxm/projects/acme-api/server.py 與 ~/notes/todo.md`;
 
   /* ---------- 事件 ---------- */
   let tInput;
-  $('input').addEventListener('input', () => { clearTimeout(tInput); tInput = setTimeout(() => { readOpts(); processText(); }, 120); });
+  $('input').addEventListener('scroll', () => { $('backdrop').scrollTop = $('input').scrollTop; });
+  $('input').addEventListener('input', () => { paintBackdrop($('input').value, []); clearTimeout(tInput); tInput = setTimeout(() => { readOpts(); processText(); }, 120); });
   $('keywords').addEventListener('input', () => { clearTimeout(tInput); tInput = setTimeout(processAll, 250); });
   $('opts').querySelectorAll('input').forEach(el => el.addEventListener('change', () => {
     if (el.id === 'remember') cacheDirty = true;
