@@ -43,6 +43,13 @@
   .opts label.numopt input { margin: 0; width: 4.5em; padding: 2px 6px; font: inherit; font-size: .85rem; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; }
   .kwbox textarea { min-height: 56px; max-height: 240px; resize: vertical; margin: 6px 0; }
   .kwbox .btns { gap: 6px; }
+  .kwbox label.kwopt { display: flex; align-items: flex-start; gap: 6px; font-size: .85rem; color: var(--muted); }
+  .kwbox label.kwopt input { margin: 3px 0 0; flex: none; }
+  .kwbox code { font-family: Consolas, monospace; font-size: .85em; }
+  .rxstatus { font-size: .8rem; margin: -2px 0 8px; display: flex; flex-direction: column; gap: 2px; }
+  .rxstatus .ok { color: var(--ok); } .rxstatus .warn { color: var(--warn); } .rxstatus .err { color: #cf222e; }
+  @media (prefers-color-scheme: dark) { .rxstatus .err { color: #f85149; } }
+  .rxstatus code { font-family: Consolas, monospace; }
   label { font-size: .9rem; cursor: pointer; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
@@ -250,14 +257,17 @@
   <details class="card" id="optsCard">
     <summary><svg class="ic"><use href="#i-gear"/></svg>設定與關鍵字 <span class="hint" id="kwCount"></span></summary>
     <div class="kwbox">
-      <label for="keywords"><b>額外要遮蔽的關鍵字</b>（逗號或換行分隔，例如公司名、主機名稱）</label>
+      <label for="keywords"><b>額外要遮蔽的關鍵字</b>（逗號或換行分隔，例如公司名、主機名稱；英數關鍵字以整個詞比對）</label>
       <textarea id="keywords" spellcheck="false" placeholder="例如：ACME, MY-PC, projectX"></textarea>
+      <label for="regexes" style="display:block;margin-top:10px"><b>額外要遮蔽的 Regex</b>（每行一條；可寫成 <code>/樣式/i</code> 加旗標；同樣以整個詞比對）</label>
+      <textarea id="regexes" spellcheck="false" placeholder="例如：&#10;\d{5}L\d{3}&#10;/host-\w+\.corp\.local/i"></textarea>
+      <div id="rxStatus" class="rxstatus"></div>
       <div class="btns">
-        <button id="btnKwExport" title="把關鍵字與下方勾選項目打包成 JSON 檔下載"><svg class="ic"><use href="#i-download"/></svg>打包下載</button>
-        <button id="btnKwImport" title="上傳設定 JSON（關鍵字會與目前內容合併，勾選項目會套用）或純文字關鍵字檔"><svg class="ic"><use href="#i-upload"/></svg>上傳匯入</button>
-        <button id="btnKwSaveDef" title="把目前關鍵字與勾選項目存成預設"><svg class="ic"><use href="#i-spark"/></svg>存為預設</button>
-        <button id="btnKwLoadDef" title="用預設的關鍵字與勾選項目覆蓋目前內容"><svg class="ic"><use href="#i-refresh"/></svg>載入預設</button>
-        <button id="btnKwClear"><svg class="ic"><use href="#i-trash"/></svg>清空</button>
+        <button id="btnKwExport" title="把關鍵字、Regex 與下方勾選項目打包成 JSON 檔下載"><svg class="ic"><use href="#i-download"/></svg>打包下載</button>
+        <button id="btnKwImport" title="上傳設定 JSON（關鍵字與 Regex 會與目前內容合併，勾選項目會套用）或純文字關鍵字檔"><svg class="ic"><use href="#i-upload"/></svg>上傳匯入</button>
+        <button id="btnKwSaveDef" title="把目前關鍵字、Regex 與勾選項目存成預設"><svg class="ic"><use href="#i-spark"/></svg>存為預設</button>
+        <button id="btnKwLoadDef" title="用預設的關鍵字、Regex 與勾選項目覆蓋目前內容"><svg class="ic"><use href="#i-refresh"/></svg>載入預設</button>
+        <button id="btnKwClear" title="清空關鍵字與 Regex"><svg class="ic"><use href="#i-trash"/></svg>清空</button>
         <span class="toast" id="toastKw"></span>
       </div>
       <input type="file" id="kwFile" accept=".json,.txt,.csv,text/plain,application/json" hidden>
@@ -516,7 +526,7 @@
   /* ---------- 主流程 ---------- */
   function anonymize(text, used) {
     const ctx = { used, users: new Set() };
-    const c = { path: 0, ip: 0, email: 0, cred: 0, key: 0, dev: 0, user: 0, kw: 0 };
+    const c = { path: 0, ip: 0, email: 0, cred: 0, key: 0, dev: 0, user: 0, rx: 0, kw: 0 };
     if (!text) return { out: '', c };
     let s = text;
 
@@ -565,15 +575,34 @@
         s = replaceOut(s, re, () => { c.user++; return tok('USER', u, ctx); });
       });
     }
+    // Regex（只套用已通過檢查的），在一般關鍵字之前
+    for (const re of rxActive) {
+      re.lastIndex = 0;
+      s = replaceOut(s, re, (...a) => {
+        const m = a[0];
+        if (!m) return m;
+        // 整個詞比對（內建）：比對結果開頭/結尾是英數字時，前後不能緊接英數字或底線
+        const named = typeof a[a.length - 1] === 'object';
+        const str = a[a.length - (named ? 2 : 1)], off = a[a.length - (named ? 3 : 2)];
+        const W = /[A-Za-z0-9_]/;
+        if (W.test(m[0]) && off > 0 && W.test(str[off - 1])) return m;
+        if (W.test(m[m.length - 1]) && W.test(str[off + m.length] || '')) return m;
+        c.rx++; return tok('RX', m, ctx);
+      });
+    }
     kwList($('keywords').value)
       .sort((a, b) => b.length - a.length).forEach(k => {
-        s = replaceOut(s, new RegExp(escRe(k), 'gi'), () => { c.kw++; return tok('KW', k, ctx); });
+        // 整個詞比對（內建）：關鍵字開頭/結尾是英數字時，前後不能緊接英數字或底線，避免只遮到詞的中間（中文不受影響）
+        const W = '[A-Za-z0-9_]';
+        const lead = /^[A-Za-z0-9_]/.test(k) ? `(?<!${W})` : '';
+        const trail = /[A-Za-z0-9_]$/.test(k) ? `(?!${W})` : '';
+        s = replaceOut(s, new RegExp(lead + escRe(k) + trail, 'gi'), () => { c.kw++; return tok('KW', k, ctx); });
       });
     return { out: s, c };
   }
 
   function statText(c) {
-    const names = { path: '路徑', ip: 'IP/MAC', email: 'Email', cred: '帳密', key: '私鑰', dev: '設備密碼', user: '使用者', kw: '關鍵字' };
+    const names = { path: '路徑', ip: 'IP/MAC', email: 'Email', cred: '帳密', key: '私鑰', dev: '設備密碼', user: '使用者', rx: 'Regex', kw: '關鍵字' };
     const parts = Object.keys(names).filter(k => c[k]).map(k => `${names[k]} ${c[k]}`);
     return parts.length ? parts.join('、') : '沒有找到要遮蔽的內容';
   }
@@ -583,7 +612,119 @@
   const LS_KWDEF = 'anonymizer.kwdefault.v1';
   const LS_UI = 'anonymizer.ui.v1';
   const kwList = v => [...new Set(String(v || '').split(/[,，;；\r\n]+/).map(x => x.trim()).filter(Boolean))];
-  function updateKwCount() { const n = kwList($('keywords').value).length; $('kwCount').textContent = n ? `（關鍵字 ${n} 個）` : ''; }
+  const rxLines = v => [...new Set(String(v || '').split(/\r?\n/).map(x => x.trim()).filter(Boolean))];
+  function updateKwCount() {
+    const n = kwList($('keywords').value).length, m = rxLines($('regexes').value).length;
+    const parts = []; if (n) parts.push(`關鍵字 ${n} 個`); if (m) parts.push(`Regex ${m} 條`);
+    $('kwCount').textContent = parts.length ? `（${parts.join('、')}）` : '';
+  }
+
+  /* ---------- Regex：解析、風險檢查、背景試跑 ---------- */
+  const RX_TIMEOUT = 500;              // 背景試跑上限（毫秒）
+  let rxSpecs = [];                    // {line, src, flags, err, warn, key}
+  let rxActive = [];                   // 目前可套用的 RegExp（已通過檢查）
+  const rxResult = new Map();          // `${key}|${hash}` -> 'ok' | 'slow' | 'empty' | 'error'
+  let rxHash = '', rxWorker = null, rxWorkerOk = true, rxBusy = false, rxTimer = 0;
+  // 常見的災難性回溯寫法：群組內有量詞，群組外又接量詞，例如 (a+)+、(\w+)*、(\d+\s?)+
+  const RX_RISK = /\((?:[^()\\]|\\.)*(?:[+*]|\{\d*,\d*\})(?:[^()\\]|\\.)*\)(?:[+*]|\{\d*,\d*\})/;
+  function parseRx(line) {
+    let src = line, flags = '';
+    const m = line.match(/^\/(.+)\/([a-z]*)$/s);
+    if (m) { src = m[1]; flags = m[2]; }
+    flags = [...new Set(flags.replace(/[gy]/g, ''))].join('');
+    const sp = { line, src, flags, key: src + '/' + flags };
+    if (/[^imsu]/.test(flags)) { sp.err = '旗標只能用 i、m、s、u'; return sp; }
+    try { const re = new RegExp(src, flags); if (re.test('')) sp.err = '會比對到空字串'; }
+    catch (e) { sp.err = '語法錯誤：' + e.message; return sp; }
+    if (RX_RISK.test(src) || /\((?:\.\*|\.\+)\)[+*]/.test(src)) sp.warn = '巢狀量詞，可能有效能風險';
+    return sp;
+  }
+  function fnv(str) { let h = 0x811c9dc5; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36) + ':' + str.length; }
+  function rxTexts() { return [$('input').value, ...files.filter(f => typeof f.raw === 'string').map(f => f.raw)]; }
+  function textsHash() {
+    const parts = [fnv($('input').value)];
+    for (const f of files) if (typeof f.raw === 'string') { if (f._hr !== f.raw) { f._hr = f.raw; f._h = fnv(f.raw); } parts.push(f._h); }
+    return parts.join('|');
+  }
+  // 同步：依目前文字決定哪些 Regex 可以套用；尚未試跑的先不套用，排程背景試跑
+  function rxPrepare() {
+    rxSpecs = rxLines($('regexes').value).map(parseRx);
+    rxHash = textsHash();
+    rxActive = [];
+    let pending = false;
+    for (const sp of rxSpecs) {
+      if (sp.err) continue;
+      const r = rxWorkerOk ? rxResult.get(sp.key + '|' + rxHash) : (sp.warn ? 'skip' : 'ok');
+      if (r === 'ok') rxActive.push(new RegExp(sp.src, sp.flags + 'g'));
+      else if (r === undefined) pending = true;
+    }
+    if (pending) { clearTimeout(rxTimer); rxTimer = setTimeout(rxRunTests, 200); }
+    renderRxStatus();
+  }
+  const RX_WORKER_SRC = `onmessage = e => {
+    const { src, flags, texts } = e.data;
+    try {
+      const re = new RegExp(src, flags + 'g');
+      for (const t of texts) { re.lastIndex = 0; let m; while ((m = re.exec(t))) { if (m[0] === '') { postMessage('empty'); return; } } }
+      postMessage('ok');
+    } catch (err) { postMessage('error'); }
+  };`;
+  function newWorker() {
+    try { return new Worker(URL.createObjectURL(new Blob([RX_WORKER_SRC], { type: 'text/javascript' }))); }
+    catch (err) { console.warn('[anonymizer] 無法建立背景執行緒，改用靜態檢查', err); rxWorkerOk = false; return null; }
+  }
+  function testOne(sp, texts) {
+    return new Promise(resolve => {
+      if (!rxWorker) rxWorker = newWorker();
+      if (!rxWorker) return resolve(null);
+      const w = rxWorker;
+      const timer = setTimeout(() => { w.terminate(); rxWorker = null; resolve('slow'); }, RX_TIMEOUT);
+      w.onmessage = e => { clearTimeout(timer); resolve(e.data); };
+      w.onerror = () => { clearTimeout(timer); w.terminate(); rxWorker = null; resolve('error'); };
+      w.postMessage({ src: sp.src, flags: sp.flags, texts });
+    });
+  }
+  async function rxRunTests() {
+    if (rxBusy) { clearTimeout(rxTimer); rxTimer = setTimeout(rxRunTests, 200); return; }
+    rxBusy = true;
+    let changed = false;
+    try {
+      const hash = textsHash(), texts = rxTexts();
+      for (const sp of rxSpecs) {
+        if (sp.err || rxResult.has(sp.key + '|' + hash)) continue;
+        renderRxStatus(sp.key);
+        const r = await testOne(sp, texts);
+        if (r === null) { changed = true; break; }   // 背景執行緒無法使用
+        rxResult.set(sp.key + '|' + hash, r);
+        changed = true;
+        if (hash !== textsHash()) break;             // 試跑期間文字又變了，重新排程
+      }
+      if (rxResult.size > 500) rxResult.clear();
+    } finally { rxBusy = false; }
+    if (changed) processAll();
+  }
+  function renderRxStatus(testing) {
+    const box = $('rxStatus'); box.textContent = '';
+    const add = (cls, sp, msg) => {
+      const d = document.createElement('div'); d.className = cls;
+      const c = document.createElement('code'); c.textContent = sp.line;
+      d.append(cls === 'ok' ? '✓ ' : cls === 'warn' ? '⚠ ' : '✗ ', c, ' ' + msg); box.append(d);
+    };
+    if (!rxWorkerOk && rxSpecs.length) { const d = document.createElement('div'); d.className = 'warn'; d.textContent = '⚠ 瀏覽器無法使用背景執行緒，只做靜態檢查：有效能風險提示的 Regex 不會套用。'; box.append(d); }
+    let okN = 0;
+    for (const sp of rxSpecs) {
+      if (sp.err) { add('err', sp, sp.err + '，已略過'); continue; }
+      const r = rxWorkerOk ? rxResult.get(sp.key + '|' + rxHash) : (sp.warn ? 'skip' : 'ok');
+      if (r === 'slow') add('err', sp, `試跑超過 ${RX_TIMEOUT} 毫秒，疑似效能問題，已略過`);
+      else if (r === 'empty') add('err', sp, '會比對到空字串，已略過');
+      else if (r === 'error') add('err', sp, '執行失敗，已略過');
+      else if (r === 'skip') add('err', sp, sp.warn + '，已略過');
+      else if (r === undefined || sp.key === testing) add('warn', sp, '檢查中…');
+      else if (sp.warn) add('warn', sp, sp.warn + '（目前內容試跑通過，已套用）');
+      else okN++;
+    }
+    if (okN) { const d = document.createElement('div'); d.className = 'ok'; d.textContent = `✓ ${okN} 條 Regex 已套用`; box.append(d); }
+  }
 
   /* ---------- 選項 ---------- */
   const OPT_IDS = ['optWin', 'optNix', 'optIp', 'optEmail', 'optCred', 'optKey', 'optDev', 'maskUserAll', 'keepCommon', 'maskFile',
@@ -602,7 +743,7 @@
   }
   function saveOpts() {
     try {
-      const o = { mode: opts.mode, idLen: opts.idLen, keywords: $('keywords').value, enc: $('enc').value };
+      const o = { mode: opts.mode, idLen: opts.idLen, keywords: $('keywords').value, regexes: $('regexes').value, enc: $('enc').value };
       OPT_IDS.forEach(id => (o[id] = $(id).checked));
       localStorage.setItem(LS_OPTS, JSON.stringify(o));
     } catch { /* 無法使用 localStorage 時忽略 */ }
@@ -622,16 +763,17 @@
   function readDefault() {
     let raw = null; try { raw = localStorage.getItem(LS_KWDEF); } catch { /* 忽略 */ }
     if (raw === null) return null;
-    try { const j = JSON.parse(raw); if (j && Array.isArray(j.keywords)) return { keywords: j.keywords.map(String), options: j.options || null }; } catch { /* 舊格式 */ }
-    return { keywords: kwList(raw), options: null };
+    try { const j = JSON.parse(raw); if (j && Array.isArray(j.keywords)) return { keywords: j.keywords.map(String), regexes: Array.isArray(j.regexes) ? j.regexes.map(String) : [], options: j.options || null }; } catch { /* 舊格式 */ }
+    return { keywords: kwList(raw), regexes: [], options: null };
   }
   function loadOpts() {
     try {
       const o = JSON.parse(localStorage.getItem(LS_OPTS) || 'null');
-      if (!o) { const d = readDefault(); if (d) { applyOptions(d.options); $('keywords').value = d.keywords.join(', '); } updateKwCount(); return; }
+      if (!o) { const d = readDefault(); if (d) { applyOptions(d.options); $('keywords').value = d.keywords.join(', '); $('regexes').value = d.regexes.join('\n'); } updateKwCount(); return; }
       OPT_IDS.forEach(id => { if (typeof o[id] === 'boolean') $(id).checked = o[id]; });
       const r = document.querySelector(`input[name=mode][value="${o.mode}"]`); if (r) r.checked = true;
       if (typeof o.keywords === 'string') $('keywords').value = o.keywords;
+      if (typeof o.regexes === 'string') $('regexes').value = o.regexes;
       updateKwCount();
       if (o.enc) $('enc').value = o.enc;
       if (o.idLen) $('idLen').value = clampLen(o.idLen);
@@ -680,7 +822,8 @@
     }
     processFiles();
   }
-  function processFiles() {
+  function processFiles(prepared) {
+    if (!prepared) { readOpts(); rxPrepare(); }
     usedFiles = new Map();
     for (const it of files) {
       if (it.raw === undefined) continue;
@@ -847,7 +990,8 @@
     const src = $('input').value;
     paintBackdrop(src, inputSpans(src, outputText, usedText));
   }
-  function processText() {
+  function processText(prepared) {
+    if (!prepared) rxPrepare();
     usedText = new Map();
     const r = anonymize($('input').value, usedText);
     outputText = r.out;
@@ -855,7 +999,7 @@
     renderInput();
     renderMap(); saveCache();
   }
-  function processAll() { readOpts(); saveOpts(); processText(); processFiles(); }
+  function processAll() { readOpts(); saveOpts(); rxPrepare(); processText(true); processFiles(true); }
 
   function usedAll() { return new Map([...usedText, ...usedFiles]); }
   function renderMap() {
@@ -988,10 +1132,11 @@ Linux 主機：/home/wangxm/projects/acme-api/server.py 與 ~/notes/todo.md`;
   $('input').addEventListener('scroll', () => { $('backdrop').scrollTop = $('input').scrollTop; });
   $('input').addEventListener('input', () => { paintBackdrop($('input').value, []); clearTimeout(tInput); tInput = setTimeout(() => { readOpts(); processText(); }, 120); });
   $('keywords').addEventListener('input', () => { updateKwCount(); clearTimeout(tInput); tInput = setTimeout(processAll, 250); });
+  $('regexes').addEventListener('input', () => { updateKwCount(); clearTimeout(tInput); tInput = setTimeout(processAll, 400); });
   const setKw = (list, msg) => { $('keywords').value = list.join(', '); updateKwCount(); processAll(); flash('toastKw', msg); };
   $('btnKwExport').onclick = () => {
     const options = collectOptions();
-    download('anonymizer-settings.json', JSON.stringify({ type: 'anonymizer-settings', version: 2, keywords: kwList($('keywords').value), options }, null, 2));
+    download('anonymizer-settings.json', JSON.stringify({ type: 'anonymizer-settings', version: 3, keywords: kwList($('keywords').value), regexes: rxLines($('regexes').value), options }, null, 2));
   };
   $('btnKwImport').onclick = () => $('kwFile').click();
   $('kwFile').onchange = async e => {
@@ -1005,6 +1150,7 @@ Linux 主機：/home/wangxm/projects/acme-api/server.py 與 ~/notes/todo.md`;
         list = Array.isArray(j) ? j : j.keywords;
         if (!Array.isArray(list)) { if (j && typeof j.options === 'object') list = []; else throw 0; }
         if (!Array.isArray(j) && j.options && typeof j.options === 'object') o = j.options;
+        if (!Array.isArray(j) && Array.isArray(j.regexes)) $('regexes').value = [...new Set([...rxLines($('regexes').value), ...j.regexes.map(x => String(x).trim()).filter(Boolean)])].join('\n');
         list = list.map(String);
       } catch { list = kwList(t); }
       if (o) {
@@ -1016,7 +1162,7 @@ Linux 主機：/home/wangxm/projects/acme-api/server.py 與 ~/notes/todo.md`;
     } catch (err) { console.warn('[anonymizer] 匯入設定失敗', err); flash('toastKw', '匯入失敗'); }
   };
   $('btnKwSaveDef').onclick = () => {
-    try { localStorage.setItem(LS_KWDEF, JSON.stringify({ keywords: kwList($('keywords').value), options: collectOptions() })); flash('toastKw', '已存為預設（關鍵字與勾選項目）'); }
+    try { localStorage.setItem(LS_KWDEF, JSON.stringify({ keywords: kwList($('keywords').value), regexes: rxLines($('regexes').value), options: collectOptions() })); flash('toastKw', '已存為預設（關鍵字、Regex 與勾選項目）'); }
     catch { flash('toastKw', '無法寫入本機儲存'); }
   };
   $('btnKwLoadDef').onclick = () => {
@@ -1024,9 +1170,10 @@ Linux 主機：/home/wangxm/projects/acme-api/server.py 與 ~/notes/todo.md`;
     if (!d) return flash('toastKw', '尚未設定預設');
     applyOptions(d.options);
     if (d.options && typeof d.options.remember === 'boolean') cacheDirty = true;
-    setKw(d.keywords, d.options ? '已載入預設（關鍵字與勾選項目）' : '已載入預設（關鍵字）');
+    $('regexes').value = d.regexes.join('\n');
+    setKw(d.keywords, d.options ? '已載入預設（關鍵字、Regex 與勾選項目）' : '已載入預設（關鍵字）');
   };
-  $('btnKwClear').onclick = () => setKw([], '已清空');
+  $('btnKwClear').onclick = () => { $('regexes').value = ''; setKw([], '已清空關鍵字與 Regex'); };
   // 可摺疊區塊：預設收起，依使用者上次的狀態還原（各自記住）
   [['optsCard', LS_UI], ['batchCard', 'anonymizer.ui.batch.v1'], ['restoreCard', 'anonymizer.ui.restore.v1'], ['mapCard', 'anonymizer.ui.map.v1']].forEach(([id, key]) => {
     try { $(id).open = localStorage.getItem(key) === 'open'; } catch { /* 忽略 */ }
