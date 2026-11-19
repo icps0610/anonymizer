@@ -257,9 +257,9 @@
   <details class="card" id="optsCard">
     <summary><svg class="ic"><use href="#i-gear"/></svg>設定與關鍵字 <span class="hint" id="kwCount"></span></summary>
     <div class="kwbox">
-      <label for="keywords"><b>額外要遮蔽的關鍵字</b>（逗號或換行分隔，例如公司名、主機名稱；英數關鍵字以整個詞比對）</label>
+      <label for="keywords"><b>額外要遮蔽的關鍵字</b>（逗號或換行分隔，例如公司名、主機名稱；英數關鍵字以整段比對）</label>
       <textarea id="keywords" spellcheck="false" placeholder="例如：ACME, MY-PC, projectX"></textarea>
-      <label for="regexes" style="display:block;margin-top:10px"><b>額外要遮蔽的 Regex</b>（每行一條；可寫成 <code>/樣式/i</code> 加旗標；同樣以整個詞比對）</label>
+      <label for="regexes" style="display:block;margin-top:10px"><b>額外要遮蔽的 Regex</b>（每行一條；可寫成 <code>/樣式/i</code> 加旗標；同樣以整段比對）</label>
       <textarea id="regexes" spellcheck="false" placeholder="例如：&#10;\d{5}L\d{3}&#10;/host-\w+\.corp\.local/i"></textarea>
       <div id="rxStatus" class="rxstatus"></div>
       <div class="btns">
@@ -281,6 +281,8 @@
       <label><input type="checkbox" id="optEmail" checked> Email</label>
       <label><input type="checkbox" id="optCred" checked> 帳號、密碼、Token</label>
       <label><input type="checkbox" id="optKey" checked> 私鑰（PRIVATE KEY 區塊）</label>
+      <label><input type="checkbox" id="optCert" checked> 憑證（CERTIFICATE 區塊）</label>
+      <label><input type="checkbox" id="optUuid" checked> UUID / GUID</label>
       <label><input type="checkbox" id="optDev" checked> 設備設定檔密碼（Cisco / Juniper / Fortinet）</label>
       <label><input type="checkbox" id="maskUserAll" checked> 其他位置出現的使用者名稱</label>
     </fieldset>
@@ -428,6 +430,11 @@
     return alts.length ? new RegExp(alts.join('|'), 'gu') : null;
   }
   // 私鑰：完整區塊（BEGIN…END）；第二個規則處理被截斷、缺少 END 的情況（遮蔽後續的標頭與 Base64 行）
+  // 憑證（含憑證請求）：完整區塊與缺少 END 的截斷區塊
+  const RE_CERT = /-----BEGIN (?:TRUSTED |X509 |NEW )?CERTIFICATE(?: REQUEST)?-----[\s\S]*?-----END (?:TRUSTED |X509 |NEW )?CERTIFICATE(?: REQUEST)?-----/g;
+  const RE_CERT_CUT = /-----BEGIN (?:TRUSTED |X509 |NEW )?CERTIFICATE(?: REQUEST)?-----(?:\r?\n[A-Za-z0-9+\/=]{8,}[ \t]*)*/g;
+  // UUID / GUID：8-4-4-4-12 個十六進位字元，可含大括號
+  const RE_UUID = /\{?(?<![0-9A-Fa-f-])[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}(?![0-9A-Fa-f-])\}?/g;
   const RE_PEM = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----/g;
   const RE_PEM_CUT = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----(?:\r?\n(?:[A-Za-z][A-Za-z0-9-]*:[^\r\n]*|[A-Za-z0-9+\/=]{8,}[ \t]*|[ \t]*(?=\r?\n[A-Za-z0-9+\/=]{8,}|\r?\n[A-Za-z][A-Za-z0-9-]*:)))*/g;
   /* ---------- 網路設備設定檔（Cisco / Arista、Juniper、Fortinet）---------- */
@@ -526,7 +533,7 @@
   /* ---------- 主流程 ---------- */
   function anonymize(text, used) {
     const ctx = { used, users: new Set() };
-    const c = { path: 0, ip: 0, email: 0, cred: 0, key: 0, dev: 0, user: 0, rx: 0, kw: 0 };
+    const c = { path: 0, ip: 0, email: 0, cred: 0, key: 0, cert: 0, uuid: 0, dev: 0, user: 0, rx: 0, kw: 0 };
     if (!text) return { out: '', c };
     let s = text;
 
@@ -539,6 +546,11 @@
       s = replaceOut(s, RE_PEM, m => { c.key++; return tok('KEY', m, ctx); });
       s = replaceOut(s, RE_PEM_CUT, m => { c.key++; return tok('KEY', m, ctx); });
     }
+    if (opts.cert) {
+      s = replaceOut(s, RE_CERT, m => { c.cert++; return tok('CERT', m, ctx); });
+      s = replaceOut(s, RE_CERT_CUT, m => { c.cert++; return tok('CERT', m, ctx); });
+    }
+    if (opts.uuid) s = replaceOut(s, RE_UUID, m => { c.uuid++; return tok('UUID', m, ctx); });
     if (opts.dev) s = applyDevice(s, ctx, c);
     if (opts.cred) {
       s = replaceOut(s, RE_URLCRED, (m, sch, u, p) => { c.cred++; ctx.users.add(u); return sch + tok('USER', u, ctx) + ':' + tok('SECRET', p, ctx) + '@'; });
@@ -581,28 +593,30 @@
       s = replaceOut(s, re, (...a) => {
         const m = a[0];
         if (!m) return m;
-        // 整個詞比對（內建）：比對結果開頭/結尾是英數字時，前後不能緊接英數字或底線
+        // 整段比對（內建）：比對結果開頭/結尾是英數字時，前後不能是同一段的延續
         const named = typeof a[a.length - 1] === 'object';
         const str = a[a.length - (named ? 2 : 1)], off = a[a.length - (named ? 3 : 2)];
-        const W = /[A-Za-z0-9_]/;
-        if (W.test(m[0]) && off > 0 && W.test(str[off - 1])) return m;
-        if (W.test(m[m.length - 1]) && W.test(str[off + m.length] || '')) return m;
+        const W = /[A-Za-z0-9_]/, J = /[-.]/, ch = i => str[i] || '';
+        // 「整段」：前後緊接英數字，或緊接「- / .」再接英數字（例如 uuid、版本號、主機名的一部分）時不遮
+        if (W.test(m[0]) && (W.test(ch(off - 1)) || (J.test(ch(off - 1)) && W.test(ch(off - 2))))) return m;
+        const e = off + m.length;
+        if (W.test(m[m.length - 1]) && (W.test(ch(e)) || (J.test(ch(e)) && W.test(ch(e + 1))))) return m;
         c.rx++; return tok('RX', m, ctx);
       });
     }
     kwList($('keywords').value)
       .sort((a, b) => b.length - a.length).forEach(k => {
-        // 整個詞比對（內建）：關鍵字開頭/結尾是英數字時，前後不能緊接英數字或底線，避免只遮到詞的中間（中文不受影響）
+        // 整段比對（內建）：關鍵字開頭/結尾是英數字時，前後不能緊接英數字、底線，或「- / .」再接英數字，避免只遮到一段的中間（中文不受影響）
         const W = '[A-Za-z0-9_]';
-        const lead = /^[A-Za-z0-9_]/.test(k) ? `(?<!${W})` : '';
-        const trail = /[A-Za-z0-9_]$/.test(k) ? `(?!${W})` : '';
+        const lead = /^[A-Za-z0-9_]/.test(k) ? `(?<!${W})(?<!${W}[-.])` : '';
+        const trail = /[A-Za-z0-9_]$/.test(k) ? `(?!${W})(?![-.]${W})` : '';
         s = replaceOut(s, new RegExp(lead + escRe(k) + trail, 'gi'), () => { c.kw++; return tok('KW', k, ctx); });
       });
     return { out: s, c };
   }
 
   function statText(c) {
-    const names = { path: '路徑', ip: 'IP/MAC', email: 'Email', cred: '帳密', key: '私鑰', dev: '設備密碼', user: '使用者', rx: 'Regex', kw: '關鍵字' };
+    const names = { path: '路徑', ip: 'IP/MAC', email: 'Email', cred: '帳密', key: '私鑰', cert: '憑證', uuid: 'UUID', dev: '設備密碼', user: '使用者', rx: 'Regex', kw: '關鍵字' };
     const parts = Object.keys(names).filter(k => c[k]).map(k => `${names[k]} ${c[k]}`);
     return parts.length ? parts.join('、') : '沒有找到要遮蔽的內容';
   }
@@ -727,12 +741,12 @@
   }
 
   /* ---------- 選項 ---------- */
-  const OPT_IDS = ['optWin', 'optNix', 'optIp', 'optEmail', 'optCred', 'optKey', 'optDev', 'maskUserAll', 'keepCommon', 'maskFile',
+  const OPT_IDS = ['optWin', 'optNix', 'optIp', 'optEmail', 'optCred', 'optKey', 'optCert', 'optUuid', 'optDev', 'maskUserAll', 'keepCommon', 'maskFile',
     'keepDrive', 'allowSpace', 'showType', 'keepLoopback', 'maskOutName', 'remember', 'idRand'];
   function readOpts() {
     opts = {
       win: $('optWin').checked, nix: $('optNix').checked, ip: $('optIp').checked, email: $('optEmail').checked,
-      cred: $('optCred').checked, key: $('optKey').checked, dev: $('optDev').checked, maskUserAll: $('maskUserAll').checked,
+      cred: $('optCred').checked, key: $('optKey').checked, cert: $('optCert').checked, uuid: $('optUuid').checked, dev: $('optDev').checked, maskUserAll: $('maskUserAll').checked,
       mode: document.querySelector('input[name=mode]:checked').value,
       keepCommon: $('keepCommon').checked, maskFile: $('maskFile').checked, keepDrive: $('keepDrive').checked,
       allowSpace: $('allowSpace').checked, showType: $('showType').checked, keepLoopback: $('keepLoopback').checked,

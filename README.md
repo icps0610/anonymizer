@@ -18,13 +18,15 @@
   - Email
   - 帳號、密碼、Token（`password=...`、`Bearer ...`、`user:pass@host` 等）
   - 私鑰：`-----BEGIN ... PRIVATE KEY-----` 到 `-----END ... PRIVATE KEY-----` 整段換成一個代號（RSA、EC、OpenSSH、加密私鑰皆可）；缺少結尾行的截斷內容也會遮蔽後續的標頭與 Base64 行
+  - 憑證：`-----BEGIN CERTIFICATE-----` 到 `-----END CERTIFICATE-----`（含 `CERTIFICATE REQUEST`）整段換成一個代號，可省下大量 token；缺少結尾行的截斷內容也會遮蔽後續的 Base64 行
+  - UUID / GUID：`8-4-4-4-12` 格式的十六進位字串（可含大括號，不分大小寫），例如 Fortinet 的 `set uuid`；不完整的片段不會被偵測
   - 設備設定檔密碼（Cisco / Arista、Juniper、Fortinet）：只遮蔽「值」，保留關鍵字與引號
     - Cisco / Arista：`enable secret/password`、`username ... secret/password`、`snmp-server community`、`tacacs-server key`、`radius-server key`、server 區塊內的 `key 7 ...`、`ntp authentication-key`、`message-digest-key`、`crypto isakmp key`、`wpa-psk`、`ppp chap/pap password`、帶類型編號的 `password 7 ...`、`secret 5 ...`、`key-string 7 ...`，以及 `$1$` `$5$` `$6$` `$8$` `$9$` 等雜湊字串；Cisco 點分 MAC（`0011.2233.4455`）併入 IP / MAC 項目
     - Juniper：`encrypted-password`、`authentication-key`、`secret`、`ascii-text`、SNMP `community`（含 `authorization` 區塊）、`user NAME {`
     - Fortinet：`set ... ENC ...`、`set password/passwd/psksecret ...`
   - 其他位置出現的使用者名稱
-  - 自訂關鍵字（逗號或換行分隔，例如公司名、主機名稱）；比對不分大小寫。英數關鍵字一律以整個詞比對：關鍵字開頭或結尾是英數字者，前後不能緊接英文、數字或底線，例如 `TW` 不會遮到 `between`，但仍會遮 `TW-01`、`(TW)`、`在TW的`
-  - 自訂 Regex（另一個輸入框，每行一條；可寫成 `/樣式/旗標`，旗標可用 `i`、`m`、`s`、`u`）：代號對應實際比對到的文字，例如 `\d{5}L\d{3}` 會讓 `12345L678` 與 `99999L000` 各得一個代號。與關鍵字相同，以整個詞比對：比對結果開頭或結尾是英數字時，前後不能緊接英數字或底線（例如 `911111A1112` 不會被 `\d{5}A\d{3}` 遮掉中間一段）
+  - 自訂關鍵字（逗號或換行分隔，例如公司名、主機名稱）；比對不分大小寫。英數關鍵字一律以整段比對：關鍵字開頭或結尾是英數字者，前後不能緊接英文、數字、底線，也不能緊接 `-` 或 `.` 再接英數字（視為同一段的延續）。例如 `TW` 會遮 `(TW)`、`在TW的`、句尾的 `TW.`，但不會遮 `between`、`TW-01`；需要遮 `TW-01` 請另外加入
+  - 自訂 Regex（另一個輸入框，每行一條；可寫成 `/樣式/旗標`，旗標可用 `i`、`m`、`s`、`u`）：代號對應實際比對到的文字，例如 `\d{5}L\d{3}` 會讓 `12345L678` 與 `99999L000` 各得一個代號。與關鍵字相同，以整段比對（例如 `911111A1112`、`28961708-9d58-...` 這類 uuid 不會只被遮掉其中一段）
     - 語法錯誤、會比對到空字串的 Regex 會顯示錯誤並略過
     - 巢狀量詞（例如 `(a+)+`）會顯示效能風險提示
     - 每條 Regex 會先在背景執行緒（Web Worker）對目前的文字與批次檔案試跑，超過 0.5 秒就中止並略過，頁面不會卡住；試跑完成前該條暫不套用。瀏覽器不支援背景執行緒時改為只做靜態檢查，有風險提示的 Regex 不套用
