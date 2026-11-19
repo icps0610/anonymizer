@@ -18,10 +18,13 @@
   body { margin: 0; font-family: system-ui, "Segoe UI", "Microsoft JhengHei", sans-serif;
     background: var(--bg); color: var(--text); line-height: 1.5; }
   .wrap { max-width: 1200px; margin: 0 auto; padding: 20px 16px 40px; }
-  .title { display: flex; align-items: center; gap: 10px; }
+  .title { display: flex; align-items: baseline; gap: 10px; margin-bottom: 16px; min-width: 0; }
+  .title .logo { align-self: center; }
+  .title h1 { flex: none; white-space: nowrap; }
   .title .logo { width: 30px; height: 30px; color: var(--accent); }
   h1 { font-size: 1.35rem; margin: 0; }
-  .sub { color: var(--muted); margin: 4px 0 16px; font-size: .9rem; }
+  /* 說明文字：與標題同一行、不換行；視窗太窄時以「…」截斷，滑鼠移上可看全文 */
+  .sub { color: var(--muted); font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px;
     padding: 14px; margin-bottom: 14px; }
   /* 設定區塊：固定 4 欄，視窗變窄時 2 欄 → 1 欄；fieldset 預設 min-width 會撐破格線，需歸零 */
@@ -141,8 +144,8 @@
   <div class="title">
     <svg class="ic logo"><use href="#i-shield"/></svg>
     <h1>Anonymizer 去識別化工具</h1>
+    <span class="sub" title="將使用者資訊換成隨機代號。全部在瀏覽器本機處理">將使用者資訊換成隨機代號。全部在瀏覽器本機處理</span>
   </div>
-  <p class="sub">把文字或檔案中的路徑、使用者名稱、IP、Email、帳號密碼換成隨機代號，再貼給 AI。全部在瀏覽器本機處理，不會上傳。</p>
 
   <!-- ① ② 輸入與結果 -->
   <div class="grid">
