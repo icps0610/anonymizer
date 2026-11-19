@@ -1200,7 +1200,7 @@ Linux 主機：/home/wangxm/projects/acme-api/server.py 與 ~/notes/todo.md`;
     if (el.id === 'remember') cacheDirty = true;
     processAll();
   }));
-  $('btnSample').onclick = () => { $('input').value = SAMPLE; if (!$('keywords').value) $('keywords').value = 'ACME, MY-PC'; processAll(); };
+  $('btnSample').onclick = () => { $('input').value = SAMPLE; processAll(); };
   $('btnClear').onclick = () => { $('input').value = ''; processAll(); };
   $('btnCopyOut').onclick = () => copy(outputText, 'toastOut');
   $('btnRegen').onclick = () => { cache.clear(); ids.clear(); cacheDirty = true; processAll(); flash('toastRegen', '已重新產生'); };
