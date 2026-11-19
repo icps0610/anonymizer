@@ -32,12 +32,15 @@
   .opts legend { font-weight: 600; margin-bottom: 4px; padding: 0; font-size: .9rem; display: flex; align-items: center; gap: 6px; }
   .opts label { display: flex; align-items: flex-start; gap: 6px; line-height: 1.4; }
   .opts label input { margin: 3px 0 0; flex: none; }
-  details.card > summary { list-style: none; }
+  details.card > summary { list-style: none; font-size: 1rem; }
   details.card > summary::-webkit-details-marker { display: none; }
   details.card > summary::after { content: "▾"; margin-left: auto; color: var(--muted); transition: transform .15s; }
   details.card:not([open]) > summary::after { transform: rotate(90deg); }
   details.card[open] > summary { margin-bottom: 12px; }
   .kwbox { margin-bottom: 16px; }
+  .opts .numrow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+  .opts label.numopt { align-items: center; }
+  .opts label.numopt input { margin: 0; width: 4.5em; padding: 2px 6px; font: inherit; font-size: .85rem; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; }
   .kwbox textarea { min-height: 56px; max-height: 240px; resize: vertical; margin: 6px 0; }
   .kwbox .btns { gap: 6px; }
   label { font-size: .9rem; cursor: pointer; }
@@ -151,7 +154,7 @@
     <div class="card">
       <div class="panel-head"><h2><svg class="ic"><use href="#i-shield"/></svg>② 去識別化結果</h2>
         <div class="btns"><span class="toast" id="toastOut"></span>
-          <button id="btnHl" title="切換標示文字顏色"><svg class="ic"><use href="#i-refresh"/></svg> <span class="swatch"></span><span id="hlName"></span></button>
+          <button id="btnHl" title="切換標示文字顏色"><span class="swatch"></span><span id="hlName"></span></button>
           <button class="primary" id="btnCopyOut"><svg class="ic"><use href="#i-copy"/></svg>複製</button>
         </div>
       </div>
@@ -160,8 +163,9 @@
   </div>
 
   <!-- 批次檔案 -->
-  <div class="card">
-    <div class="panel-head"><h2><svg class="ic"><use href="#i-file"/></svg>批次處理檔案</h2>
+  <details class="card" id="batchCard">
+    <summary><svg class="ic"><use href="#i-file"/></svg>批次處理檔案</summary>
+    <div class="panel-head" style="justify-content:flex-end">
       <div class="btns">
         <label class="hint" for="enc">編碼</label>
         <select id="enc">
@@ -189,11 +193,11 @@
       <tbody id="fileBody"></tbody>
     </table></div>
     <textarea id="filePreview" readonly hidden style="margin-top:10px;min-height:200px"></textarea>
-  </div>
+  </details>
 
   <!-- 還原 -->
   <div class="card">
-    <details>
+    <details id="restoreCard">
       <summary><svg class="ic"><use href="#i-undo"/></svg>③ 還原 AI 回覆（把代號換回原始內容）</summary>
       <p class="hint">會使用本機記住的所有代號；若是在別台電腦或已清除，請把對照表 JSON 貼到「匯入對照表」。</p>
       <div class="grid">
@@ -243,16 +247,16 @@
   </div>
 
   <!-- 設定（可摺疊） -->
-  <details class="card" id="optsCard" open>
+  <details class="card" id="optsCard">
     <summary><svg class="ic"><use href="#i-gear"/></svg>設定與關鍵字 <span class="hint" id="kwCount"></span></summary>
     <div class="kwbox">
       <label for="keywords"><b>額外要遮蔽的關鍵字</b>（逗號或換行分隔，例如公司名、主機名稱）</label>
       <textarea id="keywords" spellcheck="false" placeholder="例如：ACME, MY-PC, projectX"></textarea>
       <div class="btns">
-        <button id="btnKwExport" title="下載關鍵字為 JSON 檔"><svg class="ic"><use href="#i-download"/></svg>打包下載</button>
-        <button id="btnKwImport" title="上傳 JSON 或文字檔，與目前關鍵字合併"><svg class="ic"><use href="#i-upload"/></svg>上傳匯入</button>
-        <button id="btnKwSaveDef" title="把目前關鍵字存成預設"><svg class="ic"><use href="#i-spark"/></svg>存為預設</button>
-        <button id="btnKwLoadDef" title="用預設關鍵字覆蓋目前內容"><svg class="ic"><use href="#i-refresh"/></svg>載入預設</button>
+        <button id="btnKwExport" title="把關鍵字與下方勾選項目打包成 JSON 檔下載"><svg class="ic"><use href="#i-download"/></svg>打包下載</button>
+        <button id="btnKwImport" title="上傳設定 JSON（關鍵字會與目前內容合併，勾選項目會套用）或純文字關鍵字檔"><svg class="ic"><use href="#i-upload"/></svg>上傳匯入</button>
+        <button id="btnKwSaveDef" title="把目前關鍵字與勾選項目存成預設"><svg class="ic"><use href="#i-spark"/></svg>存為預設</button>
+        <button id="btnKwLoadDef" title="用預設的關鍵字與勾選項目覆蓋目前內容"><svg class="ic"><use href="#i-refresh"/></svg>載入預設</button>
         <button id="btnKwClear"><svg class="ic"><use href="#i-trash"/></svg>清空</button>
         <span class="toast" id="toastKw"></span>
       </div>
@@ -286,6 +290,8 @@
     <fieldset>
       <legend>代號與其他</legend>
       <label><input type="checkbox" id="showType" checked> 代號顯示類型（如 [D-x7k2q]）</label>
+      <div class="numrow"><label for="idLen" class="numopt">代號長度 <input type="number" id="idLen" min="4" max="50" step="1" value="5"> 字元</label>
+        <label title="每個代號的長度在 4 到「代號長度」之間隨機"><input type="checkbox" id="idRand" checked> 隨機長度（4～上限）</label></div>
       <label><input type="checkbox" id="keepLoopback" checked> 保留 127.0.0.1、::1 等本機位址</label>
       <label><input type="checkbox" id="maskOutName" checked> 下載的檔名也去識別化</label>
       <label><input type="checkbox" id="remember" checked> 在本機瀏覽器記住對照表</label>
@@ -299,7 +305,7 @@
 
   <!-- 對照表 -->
   <div class="card">
-    <details>
+    <details id="mapCard">
       <summary><svg class="ic"><use href="#i-table"/></svg>對照表（目前文字與檔案用到的代號）</summary>
       <div class="btns" style="margin:8px 0">
         <button id="btnCopyMap"><svg class="ic"><use href="#i-copy"/></svg>複製對照表 JSON</button>
@@ -340,8 +346,13 @@
   const ids = new Set();
   let opts = {};
 
-  function randId() {
-    const n = 5, out = [];
+  const ID_MIN = 4, ID_MAX = 50, ID_DEF = 5;
+  const clampLen = v => { const n = parseInt(v, 10); return Number.isFinite(n) ? Math.min(ID_MAX, Math.max(ID_MIN, n)) : ID_DEF; };
+  function randInt(n) {   // 0 ~ n-1
+    try { return crypto.getRandomValues(new Uint32Array(1))[0] % n; } catch { return Math.floor(Math.random() * n); }
+  }
+  function randId(len) {
+    const n = len || opts.idLen || ID_DEF, out = [];
     let buf;
     try { buf = crypto.getRandomValues(new Uint32Array(n)); }
     catch { buf = Array.from({ length: n }, () => Math.floor(Math.random() * 1e9)); }
@@ -349,10 +360,14 @@
     return out.join('');
   }
   function entry(prefix, original) {
-    const key = prefix + '|' + lc(original);
+    const max = opts.idLen || ID_DEF;
+    // key 依「設定」區分（固定長度 / 隨機長度＋上限），同一設定下同一原文的代號固定不變；固定 5 碼沿用舊 key
+    const key = prefix + '|' + lc(original) + (opts.idRand ? '\u0000r' + max : (max === ID_DEF ? '' : '\u0000' + max));
+    const len = opts.idRand ? ID_MIN + randInt(max - ID_MIN + 1) : max;
     let e = cache.get(key);
     if (!e) {
-      let id; do { id = randId(); } while (ids.has(id));
+      let id, n = len, tries = 0;
+      do { id = randId(n); if (++tries > 500) { n++; tries = 0; } } while (ids.has(id));
       ids.add(id);
       e = { key, id, prefix, original };
       cache.set(key, e);
@@ -384,9 +399,9 @@
   }
 
   /* ---------- 只替換「不是代號」的部分，避免重複遮蔽 ---------- */
-  const TOKEN_SPLIT = /(\[(?:[A-Z]+-)?[a-z0-9]{5}\])/;
+  const TOKEN_SPLIT = /(\[(?:[A-Z]+-)?[a-z0-9]{4,50}\])/;
   function replaceOut(str, re, fn) {
-    return str.split(TOKEN_SPLIT).map((part, i) => (i % 2 ? part : part.replace(re, fn))).join('');
+    return str.split(TOKEN_SPLIT).map((part, i) => (i % 2 && ids.has(part.slice(1, -1).split('-').pop()) ? part : part.replace(re, fn))).join('');
   }
   const escRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -572,7 +587,7 @@
 
   /* ---------- 選項 ---------- */
   const OPT_IDS = ['optWin', 'optNix', 'optIp', 'optEmail', 'optCred', 'optKey', 'optDev', 'maskUserAll', 'keepCommon', 'maskFile',
-    'keepDrive', 'allowSpace', 'showType', 'keepLoopback', 'maskOutName', 'remember'];
+    'keepDrive', 'allowSpace', 'showType', 'keepLoopback', 'maskOutName', 'remember', 'idRand'];
   function readOpts() {
     opts = {
       win: $('optWin').checked, nix: $('optNix').checked, ip: $('optIp').checked, email: $('optEmail').checked,
@@ -580,25 +595,46 @@
       mode: document.querySelector('input[name=mode]:checked').value,
       keepCommon: $('keepCommon').checked, maskFile: $('maskFile').checked, keepDrive: $('keepDrive').checked,
       allowSpace: $('allowSpace').checked, showType: $('showType').checked, keepLoopback: $('keepLoopback').checked,
-      maskOutName: $('maskOutName').checked, remember: $('remember').checked,
+      maskOutName: $('maskOutName').checked, remember: $('remember').checked, idRand: $('idRand').checked,
+      idLen: clampLen($('idLen').value),
     };
+    $('idLen').value = opts.idLen;
   }
   function saveOpts() {
     try {
-      const o = { mode: opts.mode, keywords: $('keywords').value, enc: $('enc').value };
+      const o = { mode: opts.mode, idLen: opts.idLen, keywords: $('keywords').value, enc: $('enc').value };
       OPT_IDS.forEach(id => (o[id] = $(id).checked));
       localStorage.setItem(LS_OPTS, JSON.stringify(o));
     } catch { /* 無法使用 localStorage 時忽略 */ }
   }
+  function collectOptions() {
+    const options = { mode: document.querySelector('input[name=mode]:checked').value, idLen: clampLen($('idLen').value) };
+    OPT_IDS.forEach(id => (options[id] = $(id).checked));
+    return options;
+  }
+  function applyOptions(o) {
+    if (!o) return;
+    OPT_IDS.forEach(id => { if (typeof o[id] === 'boolean') $(id).checked = o[id]; });
+    const r = document.querySelector(`input[name=mode][value="${o.mode}"]`); if (r) r.checked = true;
+    if (o.idLen) $('idLen').value = clampLen(o.idLen);
+  }
+  // 預設格式：{keywords:[...], options:{...}}；舊版只存關鍵字字串，仍可讀取
+  function readDefault() {
+    let raw = null; try { raw = localStorage.getItem(LS_KWDEF); } catch { /* 忽略 */ }
+    if (raw === null) return null;
+    try { const j = JSON.parse(raw); if (j && Array.isArray(j.keywords)) return { keywords: j.keywords.map(String), options: j.options || null }; } catch { /* 舊格式 */ }
+    return { keywords: kwList(raw), options: null };
+  }
   function loadOpts() {
     try {
       const o = JSON.parse(localStorage.getItem(LS_OPTS) || 'null');
-      if (!o) { const d = localStorage.getItem(LS_KWDEF); if (d) $('keywords').value = d; updateKwCount(); return; }
+      if (!o) { const d = readDefault(); if (d) { applyOptions(d.options); $('keywords').value = d.keywords.join(', '); } updateKwCount(); return; }
       OPT_IDS.forEach(id => { if (typeof o[id] === 'boolean') $(id).checked = o[id]; });
       const r = document.querySelector(`input[name=mode][value="${o.mode}"]`); if (r) r.checked = true;
       if (typeof o.keywords === 'string') $('keywords').value = o.keywords;
       updateKwCount();
       if (o.enc) $('enc').value = o.enc;
+      if (o.idLen) $('idLen').value = clampLen(o.idLen);
     } catch { /* 忽略 */ }
   }
 
@@ -872,7 +908,7 @@
   function restoreName(name, dict) {
     const i = name.lastIndexOf('.');
     const base = i > 0 ? name.slice(0, i) : name, ext = i > 0 ? name.slice(i) : '';
-    const m = base.match(/^(?:F-)?([a-z0-9]{5})$/);
+    const m = base.match(/^(?:F-)?([a-z0-9]{4,50})$/);
     if (m) for (const e of cache.values()) if (e.prefix === 'F' && e.id === m[1]) return e.original;   // 原檔名（含副檔名）
     if (/\.anon$/.test(base)) return base.slice(0, -5) + ext;
     return applyDict(name, dict).out;
@@ -954,9 +990,8 @@ Linux 主機：/home/wangxm/projects/acme-api/server.py 與 ~/notes/todo.md`;
   $('keywords').addEventListener('input', () => { updateKwCount(); clearTimeout(tInput); tInput = setTimeout(processAll, 250); });
   const setKw = (list, msg) => { $('keywords').value = list.join(', '); updateKwCount(); processAll(); flash('toastKw', msg); };
   $('btnKwExport').onclick = () => {
-    const list = kwList($('keywords').value);
-    if (!list.length) return flash('toastKw', '沒有關鍵字可下載');
-    download('anonymizer-keywords.json', JSON.stringify({ type: 'anonymizer-keywords', version: 1, keywords: list }, null, 2));
+    const options = collectOptions();
+    download('anonymizer-settings.json', JSON.stringify({ type: 'anonymizer-settings', version: 2, keywords: kwList($('keywords').value), options }, null, 2));
   };
   $('btnKwImport').onclick = () => $('kwFile').click();
   $('kwFile').onchange = async e => {
@@ -964,26 +999,39 @@ Linux 主機：/home/wangxm/projects/acme-api/server.py 與 ~/notes/todo.md`;
     if (!f) return;
     try {
       const t = await f.text();
-      let list;
-      try { const j = JSON.parse(t); list = Array.isArray(j) ? j : j.keywords; if (!Array.isArray(list)) throw 0; list = list.map(String); }
-      catch { list = kwList(t); }
+      let list, o = null;
+      try {
+        const j = JSON.parse(t);
+        list = Array.isArray(j) ? j : j.keywords;
+        if (!Array.isArray(list)) { if (j && typeof j.options === 'object') list = []; else throw 0; }
+        if (!Array.isArray(j) && j.options && typeof j.options === 'object') o = j.options;
+        list = list.map(String);
+      } catch { list = kwList(t); }
+      if (o) {
+        applyOptions(o);
+        if (typeof o.remember === 'boolean') cacheDirty = true;
+      }
       const merged = [...new Set([...kwList($('keywords').value), ...list.map(x => x.trim()).filter(Boolean)])];
-      setKw(merged, `已匯入，共 ${merged.length} 個`);
-    } catch (err) { console.warn('[anonymizer] 匯入關鍵字失敗', err); flash('toastKw', '匯入失敗'); }
+      setKw(merged, o ? `已匯入：關鍵字共 ${merged.length} 個，並套用勾選項目` : `已匯入，共 ${merged.length} 個`);
+    } catch (err) { console.warn('[anonymizer] 匯入設定失敗', err); flash('toastKw', '匯入失敗'); }
   };
   $('btnKwSaveDef').onclick = () => {
-    try { localStorage.setItem(LS_KWDEF, kwList($('keywords').value).join(', ')); flash('toastKw', '已存為預設'); }
+    try { localStorage.setItem(LS_KWDEF, JSON.stringify({ keywords: kwList($('keywords').value), options: collectOptions() })); flash('toastKw', '已存為預設（關鍵字與勾選項目）'); }
     catch { flash('toastKw', '無法寫入本機儲存'); }
   };
   $('btnKwLoadDef').onclick = () => {
-    let d = null; try { d = localStorage.getItem(LS_KWDEF); } catch { /* 忽略 */ }
-    if (d === null) return flash('toastKw', '尚未設定預設');
-    setKw(kwList(d), '已載入預設');
+    const d = readDefault();
+    if (!d) return flash('toastKw', '尚未設定預設');
+    applyOptions(d.options);
+    if (d.options && typeof d.options.remember === 'boolean') cacheDirty = true;
+    setKw(d.keywords, d.options ? '已載入預設（關鍵字與勾選項目）' : '已載入預設（關鍵字）');
   };
   $('btnKwClear').onclick = () => setKw([], '已清空');
-  // 設定區塊摺疊狀態
-  try { if (localStorage.getItem(LS_UI) === 'closed') $('optsCard').open = false; } catch { /* 忽略 */ }
-  $('optsCard').addEventListener('toggle', () => { try { localStorage.setItem(LS_UI, $('optsCard').open ? 'open' : 'closed'); } catch { /* 忽略 */ } });
+  // 可摺疊區塊：預設收起，依使用者上次的狀態還原（各自記住）
+  [['optsCard', LS_UI], ['batchCard', 'anonymizer.ui.batch.v1'], ['restoreCard', 'anonymizer.ui.restore.v1'], ['mapCard', 'anonymizer.ui.map.v1']].forEach(([id, key]) => {
+    try { $(id).open = localStorage.getItem(key) === 'open'; } catch { /* 忽略 */ }
+    $(id).addEventListener('toggle', () => { try { localStorage.setItem(key, $(id).open ? 'open' : 'closed'); } catch { /* 忽略 */ } });
+  });
   $('opts').querySelectorAll('input').forEach(el => el.addEventListener('change', () => {
     if (el.id === 'remember') cacheDirty = true;
     processAll();
