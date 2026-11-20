@@ -217,8 +217,8 @@
         </div>
         <div>
           <div class="btns" style="margin-bottom:6px">
-            <button class="primary" id="btnRestore"><svg class="ic"><use href="#i-undo"/></svg>還原</button>
-            <button id="btnCopyRestore"><svg class="ic"><use href="#i-copy"/></svg>複製</button>
+            <span class="hint">貼上後自動還原</span>
+            <button class="primary" id="btnCopyRestore"><svg class="ic"><use href="#i-copy"/></svg>複製</button>
             <span class="toast" id="toastRestore"></span>
           </div>
           <textarea id="restored" readonly style="min-height:180px"></textarea>
@@ -1074,6 +1074,7 @@
     return { out: str, n };
   }
   function restore() {
+    if (!$('aiReply').value) { $('restored').value = ''; return; }
     let dict;
     try { dict = buildRestoreDict(); }
     catch (err) { $('restored').value = '對照表 JSON 格式錯誤：' + err.message; return; }
@@ -1237,7 +1238,11 @@ Linux 主機：/home/wangxm/projects/acme-api/server.py 與 ~/notes/todo.md`;
 
   $('btnCopyMap').onclick = () => copy(JSON.stringify(mapObject(usedAll().values()), null, 2), 'toastMap');
   $('btnDlMap').onclick = () => download('anonymizer-map.json', JSON.stringify(mapObject(usedAll().values()), null, 2));
-  $('btnRestore').onclick = restore;
+  // 貼上或修改 AI 回覆、匯入對照表時自動還原
+  let tRestore = 0;
+  const autoRestore = () => { clearTimeout(tRestore); tRestore = setTimeout(restore, 150); };
+  $('aiReply').addEventListener('input', autoRestore);
+  $('mapImport').addEventListener('input', autoRestore);
   $('btnCopyRestore').onclick = () => copy($('restored').value, 'toastRestore');
 
   $('rdrop').onclick = () => $('rfileInput').click();
