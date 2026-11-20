@@ -424,7 +424,7 @@
   function buildPathRegex() {
     const ns = String.raw`[^\\/:*?"<>|\s]`;
     const sp = String.raw`[^\\/:*?"<>|\r\n]`;
-    const win = String.raw`(?:\b[A-Za-z]:[\\/]|\\\\${ns}+[\\/])(?:${opts.allowSpace ? sp : ns}+[\\/])*${ns}*`;
+    const win = String.raw`(?:\b[A-Za-z]:[\\/]+|\\\\+${ns}+[\\/]+)(?:${opts.allowSpace ? sp : ns}+[\\/]+)*${ns}*`;
     const nc = String.raw`[\p{L}\p{N}_.@+\-]`;
     const nix = String.raw`(?<![\p{L}\p{N}_:\/.\\~\-])(?:~\/(?:${nc}+\/)*${nc}+|\/(?:${nc}+\/)+${nc}*)`;
     const alts = [];
@@ -507,9 +507,9 @@
   function transformPath(p, kind, ctx) {
     let head = '', rest = p, sep = '/';
     if (kind === 'win') {
-      let m = p.match(/^([A-Za-z]:)([\\/])/);
+      let m = p.match(/^([A-Za-z]:)([\\/]+)/);
       if (m) { head = (opts.keepDrive ? m[1] : 'X:') + m[2]; rest = p.slice(m[0].length); }
-      else if ((m = p.match(/^\\\\([^\\/]+)([\\/])/))) { head = '\\\\' + tok('HOST', m[1], ctx) + m[2]; rest = p.slice(m[0].length); }
+      else if ((m = p.match(/^(\\\\+)([^\\/]+)([\\/]+)/))) { head = m[1] + tok('HOST', m[2], ctx) + m[3]; rest = p.slice(m[0].length); }
       sep = p.includes('\\') ? '\\' : '/';
     } else {
       head = p.startsWith('~/') ? '~/' : '/';
@@ -517,7 +517,9 @@
     }
     if (opts.mode === 'full') return tok('PATH', p, ctx);
 
-    const parts = rest.split(/[\\/]/);
+    // 分隔符可能是連續的（\\），保留原樣：toks = [段, 分隔符, 段, 分隔符, …, 最後一段]
+    const toks = rest.split(/([\\/]+)/);
+    const parts = toks.filter((_, i) => i % 2 === 0), seps = toks.filter((_, i) => i % 2 === 1);
     const fileName = parts.pop();
     if (opts.mode === 'keepName') {
       return tok('DIR', p.slice(0, p.length - fileName.length), ctx) + maskFileName(fileName, ctx);
@@ -530,7 +532,7 @@
       else if (!last.includes('.')) last = maskSeg(last, parts[parts.length - 1], ctx);  // 無副檔名視為目錄
       else last = maskFileName(last, ctx);
     }
-    return head + out.concat([last]).join(sep);
+    return head + out.concat([last]).map((seg, i) => seg + (seps[i] || '')).join('');
   }
 
   /* ---------- 主流程 ---------- */
@@ -541,7 +543,7 @@
     let s = text;
 
     // 預先收集使用者名稱
-    const reUser = /[\\/](?:Users|home)[\\/]([^\\/:*?"<>|\r\n]+?)(?=[\\/]|\s|$)/gi;
+    const reUser = /[\\/](?:Users|home)[\\/]+([^\\/:*?"<>|\r\n]+?)(?=[\\/]|\s|$)/gi;
     let um;
     while ((um = reUser.exec(text))) if (!COMMON.has(lc(um[1]))) ctx.users.add(um[1]);
 
@@ -599,8 +601,8 @@
         // 整段比對（內建）：比對結果開頭/結尾是英數字時，前後不能是同一段的延續
         const named = typeof a[a.length - 1] === 'object';
         const str = a[a.length - (named ? 2 : 1)], off = a[a.length - (named ? 3 : 2)];
-        const W = /[A-Za-z0-9_]/, J = /[-.]/, ch = i => str[i] || '';
-        // 「整段」：前後緊接英數字，或緊接「- / .」再接英數字（例如 uuid、版本號、主機名的一部分）時不遮
+        const W = /[A-Za-z0-9_]/, J = /-/, ch = i => str[i] || '';
+        // 「整段」：前後緊接英數字，或緊接「-」再接英數字（例如 uuid、主機名 ws-c2960x-24 的一部分）時不遮
         if (W.test(m[0]) && (W.test(ch(off - 1)) || (J.test(ch(off - 1)) && W.test(ch(off - 2))))) return m;
         const e = off + m.length;
         if (W.test(m[m.length - 1]) && (W.test(ch(e)) || (J.test(ch(e)) && W.test(ch(e + 1))))) return m;
@@ -609,10 +611,10 @@
     }
     kwList($('keywords').value)
       .sort((a, b) => b.length - a.length).forEach(k => {
-        // 整段比對（內建）：關鍵字開頭/結尾是英數字時，前後不能緊接英數字、底線，或「- / .」再接英數字，避免只遮到一段的中間（中文不受影響）
+        // 整段比對（內建）：關鍵字開頭/結尾是英數字時，前後不能緊接英數字、底線，或「-」再接英數字，避免只遮到一段的中間（中文不受影響）
         const W = '[A-Za-z0-9_]';
-        const lead = /^[A-Za-z0-9_]/.test(k) ? `(?<!${W})(?<!${W}[-.])` : '';
-        const trail = /[A-Za-z0-9_]$/.test(k) ? `(?!${W})(?![-.]${W})` : '';
+        const lead = /^[A-Za-z0-9_]/.test(k) ? `(?<!${W})(?<!${W}-)` : '';
+        const trail = /[A-Za-z0-9_]$/.test(k) ? `(?!${W})(?!-${W})` : '';
         s = replaceOut(s, new RegExp(lead + escRe(k) + trail, 'gi'), () => { c.kw++; return tok('KW', k, ctx); });
       });
     return { out: s, c };
