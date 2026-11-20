@@ -304,7 +304,7 @@
     </fieldset>
     <fieldset>
       <legend>代號與其他</legend>
-      <label><input type="checkbox" id="showType" checked> 代號顯示類型（如 [D-x7k2q]）</label>
+      <label><input type="checkbox" id="showType" checked> 代號顯示類型（如 [DIR-x7k2q]）</label>
       <div class="numrow"><label for="idLen" class="numopt">代號長度 <input type="number" id="idLen" min="4" max="50" step="1" value="5"> 字元</label>
         <label title="每個代號的長度在 4 到「代號長度」之間隨機"><input type="checkbox" id="idRand" checked> 隨機長度（4～上限）</label></div>
       <label><input type="checkbox" id="keepLoopback" checked> 保留 127.0.0.1、::1 等本機位址</label>
@@ -390,6 +390,7 @@
     }
     return e;
   }
+  const isFileP = p => p === 'FILE' || p === 'F';   // 舊版代號前綴為 F
   const fmt = e => opts.showType ? `[${e.prefix}-${e.id}]` : `[${e.id}]`;
   function tok(prefix, original, ctx) {
     const e = entry(prefix, original);
@@ -496,13 +497,13 @@
   function maskFileName(name, ctx) {
     if (!name || !opts.maskFile) return name;
     const i = name.lastIndexOf('.');
-    return tok('F', name, ctx) + (i > 0 ? name.slice(i) : '');
+    return tok('FILE', name, ctx) + (i > 0 ? name.slice(i) : '');
   }
   function maskSeg(seg, prev, ctx) {
     if (!seg) return seg;
     if (isUserParent(lc(prev)) && !COMMON.has(lc(seg))) { ctx.users.add(seg); return tok('USER', seg, ctx); }
     if (opts.keepCommon && COMMON.has(lc(seg))) return seg;
-    return tok('D', seg, ctx);
+    return tok('DIR', seg, ctx);
   }
   function transformPath(p, kind, ctx) {
     let head = '', rest = p, sep = '/';
@@ -522,7 +523,7 @@
     const parts = toks.filter((_, i) => i % 2 === 0), seps = toks.filter((_, i) => i % 2 === 1);
     const fileName = parts.pop();
     if (opts.mode === 'keepName') {
-      return tok('DIR', p.slice(0, p.length - fileName.length), ctx) + maskFileName(fileName, ctx);
+      return tok('DIRPATH', p.slice(0, p.length - fileName.length), ctx) + maskFileName(fileName, ctx);
     }
     const out = parts.map((seg, i) => maskSeg(seg, parts[i - 1], ctx));
     let last = fileName;
@@ -606,7 +607,7 @@
         if (W.test(m[0]) && (W.test(ch(off - 1)) || (J.test(ch(off - 1)) && W.test(ch(off - 2))))) return m;
         const e = off + m.length;
         if (W.test(m[m.length - 1]) && (W.test(ch(e)) || (J.test(ch(e)) && W.test(ch(e + 1))))) return m;
-        c.rx++; return tok('RX', m, ctx);
+        c.rx++; return tok('REGEX', m, ctx);
       });
     }
     kwList($('keywords').value)
@@ -615,7 +616,7 @@
         const W = '[A-Za-z0-9_]';
         const lead = /^[A-Za-z0-9_]/.test(k) ? `(?<!${W})(?<!${W}-)` : '';
         const trail = /[A-Za-z0-9_]$/.test(k) ? `(?!${W})(?!-${W})` : '';
-        s = replaceOut(s, new RegExp(lead + escRe(k) + trail, 'gi'), () => { c.kw++; return tok('KW', k, ctx); });
+        s = replaceOut(s, new RegExp(lead + escRe(k) + trail, 'gi'), () => { c.kw++; return tok('KEYWORD', k, ctx); });
       });
     return { out: s, c };
   }
@@ -807,8 +808,8 @@
     const i = name.lastIndexOf('.');
     const base = i > 0 ? name.slice(0, i) : name, ext = i > 0 ? name.slice(i) : '';
     if (!opts.maskOutName) return `${base}.anon${ext}`;
-    const e = entry('F', name); ctx.set(e.key, e);
-    return (opts.showType ? `F-${e.id}` : e.id) + ext;
+    const e = entry('FILE', name); ctx.set(e.key, e);
+    return (opts.showType ? `FILE-${e.id}` : e.id) + ext;
   }
   function readFile(f, enc) {
     return new Promise(resolve => {
@@ -985,7 +986,7 @@
       const e = (i % 2) ? byTok.get(part) : null;
       if (!e) { ip += part.length; return; }
       let len = e.original.length;
-      if (e.prefix === 'F') { const d = e.original.lastIndexOf('.'); if (d > 0) len = d; }  // 副檔名保留在結果中
+      if (isFileP(e.prefix)) { const d = e.original.lastIndexOf('.'); if (d > 0) len = d; }  // 副檔名保留在結果中
       spans.push([ip, ip + len]);
       ip += len;
     });
@@ -1035,7 +1036,15 @@
       tr.append(a, b); tb.append(tr);
     }
   }
-  function mapObject(entries) { const o = {}; for (const e of entries) o[fmt(e)] = e.original; return o; }
+  function mapObject(entries) {
+    const o = {};
+    for (const e of entries) {
+      o[fmt(e)] = e.original;
+      const d = isFileP(e.prefix) ? e.original.lastIndexOf('.') : -1;
+      if (d > 0) o[fmt(e) + e.original.slice(d)] = e.original;   // 檔名代號＋副檔名 → 原檔名，避免還原成 a.txt.txt
+    }
+    return o;
+  }
 
   async function copy(text, toastId) {
     try { await navigator.clipboard.writeText(text); flash(toastId, '已複製'); }
@@ -1046,7 +1055,12 @@
   // 兩種格式都還原（有類型 / 無類型），避免切換選項後無法還原；JSON 格式錯誤時會丟出例外
   function buildRestoreDict() {
     const dict = {};
-    for (const e of cache.values()) { dict[`[${e.prefix}-${e.id}]`] = e.original; dict[`[${e.id}]`] = e.original; if (e.prefix === 'F') { dict[`F-${e.id}`] = e.original; } }
+    for (const e of cache.values()) { dict[`[${e.prefix}-${e.id}]`] = e.original; dict[`[${e.id}]`] = e.original; if (isFileP(e.prefix)) {
+        dict[`${e.prefix}-${e.id}`] = e.original;
+        // 檔名代號後面保留了副檔名，還原時連副檔名一起換掉，避免變成 a.txt.txt
+        const d = e.original.lastIndexOf('.');
+        if (d > 0) { const ext = e.original.slice(d); for (const t of [`[${e.prefix}-${e.id}]`, `[${e.id}]`, `${e.prefix}-${e.id}`]) dict[t + ext] = e.original; }
+      } }
     const imp = $('mapImport').value.trim();
     if (imp) Object.assign(dict, JSON.parse(imp));
     return dict;
@@ -1071,8 +1085,8 @@
   function restoreName(name, dict) {
     const i = name.lastIndexOf('.');
     const base = i > 0 ? name.slice(0, i) : name, ext = i > 0 ? name.slice(i) : '';
-    const m = base.match(/^(?:F-)?([a-z0-9]{4,50})$/);
-    if (m) for (const e of cache.values()) if (e.prefix === 'F' && e.id === m[1]) return e.original;   // 原檔名（含副檔名）
+    const m = base.match(/^(?:FILE-|F-)?([a-z0-9]{4,50})$/);
+    if (m) for (const e of cache.values()) if (isFileP(e.prefix) && e.id === m[1]) return e.original;   // 原檔名（含副檔名）
     if (/\.anon$/.test(base)) return base.slice(0, -5) + ext;
     return applyDict(name, dict).out;
   }
