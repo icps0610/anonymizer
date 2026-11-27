@@ -106,6 +106,8 @@
   .btns { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
   .stat { font-size: .85rem; color: var(--muted); margin-top: 6px; }
   .toast { color: var(--ok); font-size: .85rem; }
+  .selpop { position: fixed; z-index: 50; padding: 3px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 14px rgba(0, 0, 0, .22); }
+  .selpop button { padding: 3px 10px; font-size: .8rem; white-space: nowrap; }
   table { width: 100%; border-collapse: collapse; font-size: .82rem; }
   th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border); word-break: break-all; vertical-align: middle; }
   th { color: var(--muted); font-weight: 600; }
@@ -187,7 +189,7 @@
         </div>
       </div>
       <div id="output" class="outbox" tabindex="0"></div>
-      <div class="hint" style="margin-top:4px">按住 Ctrl 點擊代號（或 ① 中的標示文字）可加入白名單、解除遮蔽</div>
+      <div class="hint" style="margin-top:4px">選取文字會出現「遮蔽／取消遮蔽」按鈕；按住 Alt 選取可直接執行。按住 Ctrl 點擊代號（或 ① 中的標示文字）可取消遮蔽</div>
     </div>
   </div>
 
@@ -284,7 +286,7 @@
       <label for="regexes" style="display:block;margin-top:10px"><b>額外要遮蔽的 Regex</b>（每行一條；可寫成 <code>/樣式/i</code> 加旗標；同樣以整段比對）</label>
       <textarea id="regexes" spellcheck="false" placeholder="例如：&#10;\d{5}L\d{3}&#10;/host-\w+\.corp\.local/i"></textarea>
       <div id="rxStatus" class="rxstatus"></div>
-      <label for="allowList" style="display:block;margin-top:10px"><b>白名單（不遮蔽）</b>（每行一個，不分大小寫；在 ①、② 或檔案預覽中按住 Ctrl 點擊已遮蔽的文字，或在對照表按「解除」，可快速加入）</label>
+      <label for="allowList" style="display:block;margin-top:10px"><b>白名單（不遮蔽）</b>（每行一個，不分大小寫；在 ①、② 或檔案預覽中按住 Ctrl 點擊已遮蔽的文字、選取後按「取消遮蔽」，或在對照表按「解除」，可快速加入）</label>
       <textarea id="allowList" spellcheck="false" placeholder="例如：&#10;王小明&#10;project-x"></textarea>
       <div class="btns">
         <button id="btnKwExport" title="把關鍵字、Regex 與下方勾選項目打包成 JSON 檔下載"><svg class="ic"><use href="#i-download"/></svg>打包下載</button>
@@ -360,6 +362,7 @@
 
 </div>
 
+<div class="selpop" id="selPop" hidden><button id="selPopBtn" type="button"></button></div>
 <script>
 (() => {
   'use strict';
@@ -1719,18 +1722,88 @@
     $('nerOut').textContent = msg;
   }
 
-  /* ---------- 白名單（不遮蔽）：Ctrl＋點擊代號或標示文字可快速加入 ---------- */
+  /* ---------- 快速遮蔽／取消遮蔽：Ctrl＋點擊、選取後的浮動按鈕、Alt＋選取 ---------- */
   const allowLines = v => [...new Set(String(v || '').split(/\r?\n/).map(x => x.trim()).filter(Boolean))];
-  function allowEntry(original, toastId) {
-    const v = String(original || '').trim();
-    if (!v) return;
-    if (/[\r\n]/.test(v)) { flash(toastId, '多行內容無法加入白名單'); return; }
+  const shortText = (v, n = 30) => (v.length > n ? v.slice(0, n) + '…' : v);
+  // 取消遮蔽：加入白名單（可一次多筆）
+  function allowEntry(originals, toastId) {
+    const vals = [...new Set([].concat(originals).map(x => String(x || '').trim()).filter(Boolean))];
+    const ok = vals.filter(v => !/[\r\n]/.test(v));
+    if (!ok.length) { if (vals.length) flash(toastId, '多行內容（私鑰、憑證）無法加入白名單'); return; }
     const list = allowLines($('allowList').value);
-    if (!list.some(x => lc(x) === lc(v))) list.push(v);
+    for (const v of ok) if (!list.some(x => lc(x) === lc(v))) list.push(v);
     $('allowList').value = list.join('\n');
     updateKwCount();
     processAll();
-    flash(toastId, `已解除遮蔽：${v.length > 30 ? v.slice(0, 30) + '…' : v}`);
+    flash(toastId, ok.length === 1 ? `已取消遮蔽：${shortText(ok[0])}` : `已取消遮蔽 ${ok.length} 項`, 3000);
+  }
+  // 遮蔽：加入關鍵字（同時從白名單移除，否則白名單優先，加了也不會遮）
+  function addKeyword(text, toastId) {
+    const v = String(text || '').trim();
+    if (!v) return;
+    if (/[\r\n]/.test(v)) { flash(toastId, '選取內容有換行，無法加入關鍵字', 3000); return; }
+    if (/[,，;；]/.test(v)) { flash(toastId, '選取內容含逗號或分號，無法當作關鍵字，請改用自訂 Regex', 4000); return; }
+    if ([...v].length < 2) { flash(toastId, '請至少選取 2 個字', 3000); return; }
+    const allow = allowLines($('allowList').value), kept = allow.filter(x => lc(x) !== lc(v));
+    if (kept.length !== allow.length) $('allowList').value = kept.join('\n');
+    const list = kwList($('keywords').value);
+    if (!list.some(x => lc(x) === lc(v))) list.push(v);
+    $('keywords').value = list.join(', ');
+    updateKwCount();
+    processAll();
+    // 遮蔽結果中（代號以外的文字）還看得到，表示沒有遮到（例如英數關鍵字只選到單字的一部分）
+    const plain = t => lc(String(t || '').split(TOKEN_SPLIT).filter((_, i) => i % 2 === 0).join('\u0000'));
+    const visible = [outputText, ...files.map(f => f.out)].some(t => plain(t).includes(lc(v)));
+    flash(toastId, visible ? `已加入關鍵字：${shortText(v)}，但仍有位置沒遮到（英數關鍵字需整段相符）` : `已遮蔽：${shortText(v)}`, visible ? 5000 : 3000);
+  }
+  // 判斷選取範圍：碰到已遮蔽的內容 → 取消遮蔽；否則 → 遮蔽選取的文字
+  const uniqEntries = list => [...new Map(list.filter(Boolean).map(e => [e.key, e])).values()];
+  function selectionAction(where) {
+    if (where === 'output') {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
+      const range = sel.getRangeAt(0);
+      if (!$('output').contains(range.commonAncestorContainer)) return null;
+      const ents = uniqEntries([...$('output').querySelectorAll('.hl')].filter(sp => range.intersectsNode(sp)).map(sp => entryByToken(sp.textContent)));
+      return ents.length ? { mode: 'unmask', ents, toast: 'toastOut' } : { mode: 'mask', text: sel.toString(), toast: 'toastOut' };
+    }
+    const t = $(where), a = t.selectionStart, b = t.selectionEnd;
+    if (a === b) return null;
+    let ents;
+    if (where === 'input') ents = inputSpans(t.value, outputText, usedText).filter(([x, y]) => x < b && y > a).map(sp => sp[2]);
+    else {
+      ents = [];
+      const re = new RegExp(TOKEN_SPLIT.source, 'g');
+      let m;
+      while ((m = re.exec(t.value))) { if (m.index >= b) break; if (m.index + m[0].length > a) ents.push(entryByToken(m[0])); }
+    }
+    ents = uniqEntries(ents);
+    const toast = where === 'filePreview' ? 'toastFiles' : 'toastOut';
+    return ents.length ? { mode: 'unmask', ents, toast } : { mode: 'mask', text: t.value.slice(a, b), toast };
+  }
+  function runSelAction(act) {
+    if (!act) return;
+    if (act.mode === 'unmask') allowEntry(act.ents.map(e => e.original), act.toast);
+    else addKeyword(act.text, act.toast);
+  }
+  let selPending = null;
+  function hideSelPop() { $('selPop').hidden = true; selPending = null; }
+  function showSelPop(act, x, y) {
+    if (!act || (act.mode === 'mask' && !act.text.trim())) { hideSelPop(); return; }
+    selPending = act;
+    const btn = $('selPopBtn');
+    if (act.mode === 'unmask') {
+      btn.textContent = act.ents.length === 1 ? `取消遮蔽「${shortText(act.ents[0].original, 16)}」` : `取消遮蔽 ${act.ents.length} 項`;
+      btn.title = '加入白名單：' + act.ents.map(e => shortText(e.original, 40)).join('、');
+    } else {
+      btn.textContent = `遮蔽「${shortText(act.text.trim(), 16)}」`;
+      btn.title = '加入關鍵字，所有出現的位置都會遮蔽';
+    }
+    const pop = $('selPop');
+    pop.hidden = false;
+    const w = pop.offsetWidth, h = pop.offsetHeight;
+    pop.style.left = Math.max(4, Math.min(x + 10, window.innerWidth - w - 4)) + 'px';
+    pop.style.top = (y + 14 + h > window.innerHeight ? Math.max(4, y - h - 10) : y + 14) + 'px';
   }
   function entryByToken(t) {
     for (const e of cache.values()) if (fmt(e) === t || `[${e.prefix}-${e.id}]` === t || `[${e.id}]` === t) return e;
@@ -2079,6 +2152,23 @@ VTLw7onLRnrq0/IzW7yWR7QkrmBL7jTKEn5u+qKhbwKfBstIs+bMY2Zkp18gnTxK
     const ent = t && entryByToken(t);
     if (ent) allowEntry(ent.original, 'toastFiles');
   });
+  // 選取文字：放開滑鼠時顯示浮動按鈕；按住 Alt 選取則直接執行
+  ['input', 'output', 'filePreview'].forEach(id => $(id).addEventListener('mouseup', e => {
+    if (e.button !== 0 || ctrlOf(e)) return;
+    setTimeout(() => {   // 等瀏覽器更新選取範圍
+      const act = selectionAction(id);
+      if (!act) { hideSelPop(); return; }
+      if (e.altKey) { hideSelPop(); runSelAction(act); }
+      else showSelPop(act, e.clientX, e.clientY);
+    }, 0);
+  }));
+  $('selPopBtn').addEventListener('mousedown', e => e.preventDefault());   // 保留選取範圍
+  $('selPopBtn').addEventListener('click', () => { const act = selPending; hideSelPop(); runSelAction(act); });
+  document.addEventListener('mousedown', e => { if (!$('selPop').hidden && !$('selPop').contains(e.target)) hideSelPop(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('selPop').hidden) hideSelPop(); });
+  window.addEventListener('scroll', () => { if (!$('selPop').hidden) hideSelPop(); }, true);
+  window.addEventListener('resize', () => { if (!$('selPop').hidden) hideSelPop(); });
+  $('input').addEventListener('input', () => { if (!$('selPop').hidden) hideSelPop(); });
   $('btnSample').onclick = () => {
     const n = SAMPLES.length;
     sampleIdx = sampleIdx < 0 ? randInt(n) : (sampleIdx + 1 + randInt(n - 1)) % n;   // 隨機，但不和上一次相同
