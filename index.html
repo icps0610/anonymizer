@@ -300,7 +300,7 @@
     <fieldset>
       <legend>個人資訊</legend>
       <label><input type="checkbox" id="optEmail" checked> Email</label>
-      <label title="手機 0911-123456、0911123456、+886 911 123 456；市話 02-2345-6789、(02)2345-6789，可帶分機"><input type="checkbox" id="optPhone" checked> 台灣電話號碼</label>
+      <label title="手機 0911-123456（也接受 0911123456、+886-911-123456 等寫法）；市話 (02)2345-6789、02-2345-6789，可帶分機"><input type="checkbox" id="optPhone" checked> 台灣電話號碼</label>
       <label title="從路徑（C:\Users\xxx、/home/xxx）或帳號欄位找到的使用者名稱，出現在文字其他位置時也一併遮蔽"><input type="checkbox" id="maskUserAll" checked> 使用者名稱（其他位置也遮蔽）</label>
       <label title="使用中研院 CKIP 的 NER 模型（Xenova/bert-base-chinese-ner）在瀏覽器內辨識人名、組織、地名、設施、產品等專有名詞；文字不會上傳，只有模型檔會從 Hugging Face 下載"><input type="checkbox" id="optNer"> 中文名詞（AI 模型）</label>
       <div class="sub-hint">人名、組織、地名等；勾選後才下載模型</div>
@@ -522,7 +522,7 @@
   const H = '[0-9A-Fa-f]{1,4}';
   const RE_IPV6 = new RegExp(
     `(?<![\\w:])(?:(?:${H}:){7}${H}|(?:${H}:){1,6}:(?:${H}(?::${H}){0,5})?|::(?:${H}(?::${H}){0,6}))(?![\\w:])`, 'g');
-  // 台灣電話：手機 0911-123456、0911-123-456、0911123456、+886 911 123 456；
+  // 台灣電話：手機標準寫法 0911-123456，也接受 0911123456、0911-123-456、0911 123 456、+886-911-123456；
   // 市話需有區碼分隔：02-2345-6789、(02)2345-6789、037-123456、0800-123-456、+886-2-2345-6789，可帶分機（#123、轉123、分機123、ext 123）
   const RE_TW_MOBILE = /(?<![\w+\-])(?:(?:\+|00)?886[- ]?(?:\(0\))?9\d{2}|09\d{2})[- ]?\d{3}[- ]?\d{3}(?!\w)(?!-\d)/g;
   const RE_TW_TEL = /(?<![\w+\-])(?:(?:\+|00)?886[- ]?\(?0?[2-8]\d{0,2}\)?[- ]?|\(0[2-8]\d{0,2}\) ?|0[2-8]\d{0,2}[- ])\d{3,4}[- ]?\d{3,4}(?: ?(?:#|轉|分機|ext\.? ?)\d{1,6})?(?!\w)(?!-\d)/gi;
@@ -1975,7 +1975,7 @@ config system admin
     next
 end
 # Juniper
-set system root-authentication encrypted-password "$6$abcdef$K1n2o3p4q5r6s7t8u9v0wXyZ"
+set system root-authentication encrypted-password "$6$2bGqJYr9$JYmSW9Iv2IO3yH14tXw22wSJlUHXoFuSYBWAFc8yJ8713ZQXesUT/9cCywZKqRUAAd3Y37L5Q7WnZ4w5XWGlma"
 備份：\\NAS01\backup\network\core-sw01.cfg，負責人 netadmin@corp.example.com.tw
 -----BEGIN RSA PRIVATE KEY-----
 MIIEowIBAAKCAQEAu1SU1LfVLPHCozMxH2Mo4lgOEePzNm0tRgeLezV6ffAt0gun
@@ -1983,13 +1983,13 @@ VTLw7onLRnrq0/IzW7yWR7QkrmBL7jTKEn5u+qKhbwKfBstIs+bMY2Zkp18gnTxK
 -----END RSA PRIVATE KEY-----` },
     { name: '會議紀錄（電話、Email、帳密；人名與公司需勾選「中文名詞」）', text: String.raw`【會議紀錄】2026/11/20 系統驗收會議
 出席：王小明（藍海數位科技）、陳美玲、林志豪
-聯絡窗口：陳美玲 手機 0912-345-678，公司 (02)2345-6789 轉 321，Email meiling.chen@bluesea-tech.com.tw
+聯絡窗口：陳美玲 手機 0912-345678，公司 (02)2345-6789 轉 321，Email meiling.chen@bluesea-tech.com.tw
 地點：台北市信義區松仁路 100 號 12 樓 第一會議室
 決議：
 1. 林志豪於 11/30 前更新驗收報告：\\FILESRV01\專案\驗收\驗收報告.docx
 2. 林志豪的筆電 C:\Users\linzh\Desktop\客戶資料.xlsx 請於結案後刪除
 3. 測試帳號 user=test.lin password=Spring2026! 驗收後停用
-4. 客服專線 0800-123-456；緊急聯絡 +886 933 222 111` },
+4. 客服專線 0800-123-456；緊急聯絡 +886-933-222111` },
   ];
   let sampleIdx = -1;
 
