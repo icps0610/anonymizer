@@ -43,6 +43,9 @@
   .kwbox { margin-bottom: 16px; }
   .opts .numrow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
   .opts label.numopt { align-items: center; }
+  .opts .sub-legend { font-size: .8rem; font-weight: 600; color: var(--muted); margin-top: 6px; }
+  .opts .sub-hint { font-size: .8rem; color: var(--muted); margin: -2px 0 0 22px; }
+  .opts label.indent { margin-left: 22px; font-size: .85rem; }
   .opts label.numopt input { margin: 0; width: 4.5em; padding: 2px 6px; font: inherit; font-size: .85rem; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; }
   .kwbox textarea { min-height: 56px; max-height: 240px; resize: vertical; margin: 6px 0; }
   .kwbox .btns { gap: 6px; }
@@ -116,6 +119,10 @@
   .drop .ic { width: 28px; height: 28px; }
   .drop.over { border-color: var(--accent); background: var(--accent-weak); color: var(--text); }
   .warn { color: var(--warn); }
+  .nerbox { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0 0 2px 22px; font-size: .8rem; color: var(--muted); }
+  .nerbox button { padding: 2px 8px; font-size: .8rem; }
+  .nerbox .bar { width: 100%; height: 4px; border-radius: 999px; background: var(--border); overflow: hidden; }
+  .nerbox .bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .15s; }
   .filetable { margin-top: 10px; }
   .filetable button { padding: 3px 8px; }
   /* 捲軸美化：backdrop 與 textarea 使用相同寬度，避免換行位置錯位；backdrop 的滑塊透明 */
@@ -163,7 +170,7 @@
     <div class="card">
       <div class="panel-head"><h2><svg class="ic"><use href="#i-input"/></svg>① 原始文字</h2>
         <div class="btns">
-          <button id="btnSample"><svg class="ic"><use href="#i-spark"/></svg>範例</button>
+          <button id="btnSample" title="隨機顯示三種範例之一：程式錯誤訊息、網路設備設定檔、會議紀錄"><svg class="ic"><use href="#i-spark"/></svg>範例</button>
           <button id="btnClear"><svg class="ic"><use href="#i-trash"/></svg>清除</button>
         </div>
       </div>
@@ -174,12 +181,13 @@
     </div>
     <div class="card">
       <div class="panel-head"><h2><svg class="ic"><use href="#i-shield"/></svg>② 去識別化結果</h2>
-        <div class="btns"><span class="toast" id="toastOut"></span>
+        <div class="btns"><span class="warn hint" id="nerOut"></span><span class="toast" id="toastOut"></span>
           <button id="btnHl" title="切換標示文字顏色"><span class="swatch"></span><span id="hlName"></span></button>
           <button class="primary" id="btnCopyOut"><svg class="ic"><use href="#i-copy"/></svg>複製</button>
         </div>
       </div>
       <div id="output" class="outbox" tabindex="0"></div>
+      <div class="hint" style="margin-top:4px">按住 Ctrl 點擊代號（或 ① 中的標示文字）可加入白名單、解除遮蔽</div>
     </div>
   </div>
 
@@ -207,7 +215,7 @@
     <div class="drop" id="drop">
       <svg class="ic"><use href="#i-upload"/></svg>
       <div>把檔案拖曳到這裡，或點此選擇檔案（可多選）</div>
-      <div class="hint">套用上方相同的選項與對照表；輸出一律為 UTF-8</div>
+      <div class="hint">套用上方相同的選項與對照表；文字檔輸出一律為 UTF-8；.docx / .xlsx 會輸出同格式並保留排版</div>
     </div>
     <div class="filetable"><table id="fileTable" hidden>
       <thead><tr><th>原始檔名</th><th>輸出檔名</th><th>大小</th><th>取代數</th><th></th></tr></thead>
@@ -276,6 +284,8 @@
       <label for="regexes" style="display:block;margin-top:10px"><b>額外要遮蔽的 Regex</b>（每行一條；可寫成 <code>/樣式/i</code> 加旗標；同樣以整段比對）</label>
       <textarea id="regexes" spellcheck="false" placeholder="例如：&#10;\d{5}L\d{3}&#10;/host-\w+\.corp\.local/i"></textarea>
       <div id="rxStatus" class="rxstatus"></div>
+      <label for="allowList" style="display:block;margin-top:10px"><b>白名單（不遮蔽）</b>（每行一個，不分大小寫；在 ①、② 或檔案預覽中按住 Ctrl 點擊已遮蔽的文字，或在對照表按「解除」，可快速加入）</label>
+      <textarea id="allowList" spellcheck="false" placeholder="例如：&#10;王小明&#10;project-x"></textarea>
       <div class="btns">
         <button id="btnKwExport" title="把關鍵字、Regex 與下方勾選項目打包成 JSON 檔下載"><svg class="ic"><use href="#i-download"/></svg>打包下載</button>
         <button id="btnKwImport" title="上傳設定 JSON（關鍵字與 Regex 會與目前內容合併，勾選項目會套用）或純文字關鍵字檔"><svg class="ic"><use href="#i-upload"/></svg>上傳匯入</button>
@@ -288,37 +298,43 @@
     </div>
     <div class="opts" id="opts">
     <fieldset>
-      <legend><svg class="ic"><use href="#i-gear"/></svg>要遮蔽的項目</legend>
-      <label><input type="checkbox" id="optWin" checked> Windows 路徑</label>
-      <label><input type="checkbox" id="optNix" checked> Linux / macOS 路徑</label>
-      <label><input type="checkbox" id="optIp" checked> IP / MAC 位址</label>
+      <legend>個人資訊</legend>
       <label><input type="checkbox" id="optEmail" checked> Email</label>
-      <label><input type="checkbox" id="optCred" checked> 帳號、密碼、Token</label>
-      <label><input type="checkbox" id="optKey" checked> 私鑰（PRIVATE KEY 區塊）</label>
-      <label><input type="checkbox" id="optCert" checked> 憑證（CERTIFICATE 區塊）</label>
-      <label><input type="checkbox" id="optUuid" checked> UUID / GUID</label>
-      <label><input type="checkbox" id="optDev" checked> 設備設定檔密碼（Cisco / Juniper / Fortinet）</label>
-      <label><input type="checkbox" id="maskUserAll" checked> 其他位置出現的使用者名稱</label>
+      <label title="手機 0911-123456、0911123456、+886 911 123 456；市話 02-2345-6789、(02)2345-6789，可帶分機"><input type="checkbox" id="optPhone" checked> 台灣電話號碼</label>
+      <label title="從路徑（C:\Users\xxx、/home/xxx）或帳號欄位找到的使用者名稱，出現在文字其他位置時也一併遮蔽"><input type="checkbox" id="maskUserAll" checked> 使用者名稱（其他位置也遮蔽）</label>
+      <label title="使用中研院 CKIP 的 NER 模型（Xenova/bert-base-chinese-ner）在瀏覽器內辨識人名、組織、地名、設施、產品等專有名詞；文字不會上傳，只有模型檔會從 Hugging Face 下載"><input type="checkbox" id="optNer"> 中文名詞（AI 模型）</label>
+      <div class="sub-hint">人名、組織、地名等；勾選後才下載模型</div>
+      <div class="nerbox" id="nerBox" hidden><span id="nerStatus"></span><button id="btnNer" hidden></button></div>
     </fieldset>
     <fieldset>
-      <legend>路徑取代方式</legend>
+      <legend>網路與帳密</legend>
+      <label><input type="checkbox" id="optIp" checked> IP / MAC 位址</label>
+      <label class="indent"><input type="checkbox" id="keepLoopback" checked> 保留 127.0.0.1、::1 等本機位址</label>
+      <label title="password=…、token=…、Bearer …、user:pass@host 等"><input type="checkbox" id="optCred" checked> 帳號、密碼、Token</label>
+      <label title="Cisco / Arista、Juniper、Fortinet 設定檔中的密碼、金鑰、SNMP community、雜湊字串"><input type="checkbox" id="optDev" checked> 設備設定檔密碼</label>
+      <label title="-----BEGIN … PRIVATE KEY----- 整段"><input type="checkbox" id="optKey" checked> 私鑰</label>
+      <label title="-----BEGIN CERTIFICATE----- 整段（含 CERTIFICATE REQUEST）"><input type="checkbox" id="optCert" checked> 憑證</label>
+      <label><input type="checkbox" id="optUuid" checked> UUID / GUID</label>
+    </fieldset>
+    <fieldset>
+      <legend>路徑</legend>
+      <label><input type="checkbox" id="optWin" checked> Windows 路徑</label>
+      <label><input type="checkbox" id="optNix" checked> Linux / macOS 路徑</label>
+      <div class="sub-legend">取代方式</div>
       <label><input type="radio" name="mode" value="structure" checked> 保留結構（逐段遮蔽）</label>
       <label><input type="radio" name="mode" value="keepName"> 只保留檔名</label>
       <label><input type="radio" name="mode" value="full"> 整段路徑取代</label>
-    </fieldset>
-    <fieldset>
-      <legend>路徑選項</legend>
-      <label><input type="checkbox" id="keepCommon" checked> 保留系統常見目錄（Users、AppData…）</label>
+      <div class="sub-legend">細節</div>
+      <label title="Users、AppData、Program Files、home、usr、src、node_modules 等"><input type="checkbox" id="keepCommon" checked> 保留系統常見目錄</label>
       <label><input type="checkbox" id="maskFile"> 遮蔽檔名（保留副檔名）</label>
       <label><input type="checkbox" id="keepDrive" checked> 保留磁碟代號</label>
       <label><input type="checkbox" id="allowSpace" checked> 目錄名稱可含空白</label>
     </fieldset>
     <fieldset>
-      <legend>代號與其他</legend>
+      <legend>代號與輸出</legend>
       <label><input type="checkbox" id="showType" checked> 代號顯示類型（如 [DIR-x7k2q]）</label>
       <div class="numrow"><label for="idLen" class="numopt">代號長度 <input type="number" id="idLen" min="4" max="50" step="1" value="5"> 字元</label>
         <label title="每個代號的長度在 4 到「代號長度」之間隨機"><input type="checkbox" id="idRand" checked> 隨機長度（4～上限）</label></div>
-      <label><input type="checkbox" id="keepLoopback" checked> 保留 127.0.0.1、::1 等本機位址</label>
       <label><input type="checkbox" id="maskOutName" checked> 下載的檔名也去識別化</label>
       <label><input type="checkbox" id="remember" checked> 在本機瀏覽器記住對照表</label>
       <div class="btns" style="margin-top:4px">
@@ -338,7 +354,7 @@
         <button id="btnDlMap"><svg class="ic"><use href="#i-download"/></svg>下載對照表</button>
         <span class="toast" id="toastMap"></span>
       </div>
-      <div class="maptable"><table><thead><tr><th>代號</th><th>原始內容</th></tr></thead><tbody id="mapBody"></tbody></table></div>
+      <div class="maptable"><table><thead><tr><th>代號</th><th>原始內容</th><th style="width:5em"></th></tr></thead><tbody id="mapBody"></tbody></table></div>
     </details>
   </div>
 
@@ -403,7 +419,12 @@
   }
   const isFileP = p => p === 'FILE' || p === 'F';   // 舊版代號前綴為 F
   const fmt = e => opts.showType ? `[${e.prefix}-${e.id}]` : `[${e.id}]`;
+  // 白名單：比對不分大小寫；命中時保留原文（白名單優先於所有遮蔽規則）
+  let allowCur = new Set();
+  const isAllowed = s => allowCur.size > 0 && allowCur.has(lc(String(s).trim()));
+  const ALLOW_CNT = { EMAIL: 'email', IP: 'ip', MAC: 'ip', KEY: 'key', CERT: 'cert', UUID: 'uuid', REGEX: 'rx', KEYWORD: 'kw', NAME: 'name', PHONE: 'phone' };
   function tok(prefix, original, ctx) {
+    if (isAllowed(original)) { const k = ALLOW_CNT[prefix]; if (k && ctx.c) ctx.c[k]--; return original; }
     const e = entry(prefix, original);
     ctx.used.set(e.key, e);
     return fmt(e);
@@ -501,12 +522,16 @@
   const H = '[0-9A-Fa-f]{1,4}';
   const RE_IPV6 = new RegExp(
     `(?<![\\w:])(?:(?:${H}:){7}${H}|(?:${H}:){1,6}:(?:${H}(?::${H}){0,5})?|::(?:${H}(?::${H}){0,6}))(?![\\w:])`, 'g');
+  // 台灣電話：手機 0911-123456、0911-123-456、0911123456、+886 911 123 456；
+  // 市話需有區碼分隔：02-2345-6789、(02)2345-6789、037-123456、0800-123-456、+886-2-2345-6789，可帶分機（#123、轉123、分機123、ext 123）
+  const RE_TW_MOBILE = /(?<![\w+\-])(?:(?:\+|00)?886[- ]?(?:\(0\))?9\d{2}|09\d{2})[- ]?\d{3}[- ]?\d{3}(?!\w)(?!-\d)/g;
+  const RE_TW_TEL = /(?<![\w+\-])(?:(?:\+|00)?886[- ]?\(?0?[2-8]\d{0,2}\)?[- ]?|\(0[2-8]\d{0,2}\) ?|0[2-8]\d{0,2}[- ])\d{3,4}[- ]?\d{3,4}(?: ?(?:#|轉|分機|ext\.? ?)\d{1,6})?(?!\w)(?!-\d)/gi;
   const USER_KEYS = new Set(['username', 'user', 'uid', 'login', 'account', 'acct']);
   const LOOPBACK = /^(127\.|0\.0\.0\.0$|255\.255\.255\.255$|::1?$)/;
 
   /* ---------- 路徑轉換 ---------- */
   function maskFileName(name, ctx) {
-    if (!name || !opts.maskFile) return name;
+    if (!name || !opts.maskFile || isAllowed(name)) return name;
     const i = name.lastIndexOf('.');
     return tok('FILE', name, ctx) + (i > 0 ? name.slice(i) : '');
   }
@@ -548,9 +573,22 @@
   }
 
   /* ---------- 主流程 ---------- */
-  function anonymize(text, used) {
+  // 白名單項目內含 k 時（例如白名單「王志明」、k 為「志明」），落在白名單文字裡的 k 保留不遮
+  function guarded(k, fn) {
+    const lk = lc(k), ws = [...allowCur].filter(w => w !== lk && w.includes(lk));
+    if (!ws.length) return fn;
+    return (m, ...a) => {
+      const named = typeof a[a.length - 1] === 'object';
+      const str = a[a.length - (named ? 2 : 1)], off = a[a.length - (named ? 3 : 2)], L = lc(str);
+      for (const w of ws) for (let i = w.indexOf(lk); i >= 0; i = w.indexOf(lk, i + 1)) if (off - i >= 0 && L.startsWith(w, off - i)) return m;
+      return fn(m, ...a);
+    };
+  }
+  // names：名詞辨識（NER）找到的專有名詞，會像關鍵字一樣遮蔽所有出現的位置
+  function anonymize(text, used, names) {
     const ctx = { used, users: new Set() };
-    const c = { path: 0, ip: 0, email: 0, cred: 0, key: 0, cert: 0, uuid: 0, dev: 0, user: 0, rx: 0, kw: 0 };
+    const c = { path: 0, ip: 0, email: 0, phone: 0, cred: 0, key: 0, cert: 0, uuid: 0, dev: 0, user: 0, rx: 0, kw: 0, name: 0 };
+    ctx.c = c;
     if (!text) return { out: '', c };
     let s = text;
 
@@ -598,6 +636,11 @@
         return transformPath(p, g.win !== undefined ? 'win' : 'nix', ctx) + tail;
       });
     }
+    // 台灣電話（在路徑之後，避免把路徑拆開；檔名裡的電話仍會遮蔽）
+    if (opts.phone) {
+      s = replaceOut(s, RE_TW_MOBILE, m => { c.phone++; return tok('PHONE', m, ctx); });
+      s = replaceOut(s, RE_TW_TEL, m => { c.phone++; return tok('PHONE', m, ctx); });
+    }
     if (opts.maskUserAll) {
       [...ctx.users].sort((a, b) => b.length - a.length).forEach(u => {
         const re = new RegExp(`(?<![\\p{L}\\p{N}_])${escRe(u)}(?![\\p{L}\\p{N}_])`, 'giu');
@@ -627,13 +670,19 @@
         const W = '[A-Za-z0-9_]';
         const lead = /^[A-Za-z0-9_]/.test(k) ? `(?<!${W})(?<!${W}-)` : '';
         const trail = /[A-Za-z0-9_]$/.test(k) ? `(?!${W})(?!-${W})` : '';
-        s = replaceOut(s, new RegExp(lead + escRe(k) + trail, 'gi'), () => { c.kw++; return tok('KEYWORD', k, ctx); });
+        s = replaceOut(s, new RegExp(lead + escRe(k) + trail, 'gi'), guarded(k, () => { c.kw++; return tok('KEYWORD', k, ctx); }));
       });
+    // 名詞（一定含中文字，不需英數整段比對）；長的先換，避免「王小明」被「小明」拆開
+    if (names && names.length) {
+      [...names].sort((a, b) => b.length - a.length).forEach(n => {
+        s = replaceOut(s, new RegExp(escRe(n), 'g'), guarded(n, () => { c.name++; return tok('NAME', n, ctx); }));
+      });
+    }
     return { out: s, c };
   }
 
   function statText(c) {
-    const names = { path: '路徑', ip: 'IP/MAC', email: 'Email', cred: '帳密', key: '私鑰', cert: '憑證', uuid: 'UUID', dev: '設備密碼', user: '使用者', rx: 'Regex', kw: '關鍵字' };
+    const names = { path: '路徑', ip: 'IP/MAC', email: 'Email', phone: '電話', cred: '帳密', key: '私鑰', cert: '憑證', uuid: 'UUID', dev: '設備密碼', user: '使用者', rx: 'Regex', kw: '關鍵字', name: '名詞' };
     const parts = Object.keys(names).filter(k => c[k]).map(k => `${names[k]} ${c[k]}`);
     return parts.length ? parts.join('、') : '沒有找到要遮蔽的內容';
   }
@@ -645,8 +694,8 @@
   const kwList = v => [...new Set(String(v || '').split(/[,，;；\r\n]+/).map(x => x.trim()).filter(Boolean))];
   const rxLines = v => [...new Set(String(v || '').split(/\r?\n/).map(x => x.trim()).filter(Boolean))];
   function updateKwCount() {
-    const n = kwList($('keywords').value).length, m = rxLines($('regexes').value).length;
-    const parts = []; if (n) parts.push(`關鍵字 ${n} 個`); if (m) parts.push(`Regex ${m} 條`);
+    const n = kwList($('keywords').value).length, m = rxLines($('regexes').value).length, a = allowLines($('allowList').value).length;
+    const parts = []; if (n) parts.push(`關鍵字 ${n} 個`); if (m) parts.push(`Regex ${m} 條`); if (a) parts.push(`白名單 ${a} 個`);
     $('kwCount').textContent = parts.length ? `（${parts.join('、')}）` : '';
   }
 
@@ -758,23 +807,24 @@
   }
 
   /* ---------- 選項 ---------- */
-  const OPT_IDS = ['optWin', 'optNix', 'optIp', 'optEmail', 'optCred', 'optKey', 'optCert', 'optUuid', 'optDev', 'maskUserAll', 'keepCommon', 'maskFile',
-    'keepDrive', 'allowSpace', 'showType', 'keepLoopback', 'maskOutName', 'remember', 'idRand'];
+  const OPT_IDS = ['optWin', 'optNix', 'optIp', 'optEmail', 'optPhone', 'optCred', 'optKey', 'optCert', 'optUuid', 'optDev', 'maskUserAll', 'keepCommon', 'maskFile',
+    'keepDrive', 'allowSpace', 'showType', 'keepLoopback', 'maskOutName', 'remember', 'idRand', 'optNer'];
   function readOpts() {
     opts = {
-      win: $('optWin').checked, nix: $('optNix').checked, ip: $('optIp').checked, email: $('optEmail').checked,
+      win: $('optWin').checked, nix: $('optNix').checked, ip: $('optIp').checked, email: $('optEmail').checked, phone: $('optPhone').checked,
       cred: $('optCred').checked, key: $('optKey').checked, cert: $('optCert').checked, uuid: $('optUuid').checked, dev: $('optDev').checked, maskUserAll: $('maskUserAll').checked,
       mode: document.querySelector('input[name=mode]:checked').value,
       keepCommon: $('keepCommon').checked, maskFile: $('maskFile').checked, keepDrive: $('keepDrive').checked,
       allowSpace: $('allowSpace').checked, showType: $('showType').checked, keepLoopback: $('keepLoopback').checked,
       maskOutName: $('maskOutName').checked, remember: $('remember').checked, idRand: $('idRand').checked,
-      idLen: clampLen($('idLen').value),
+      idLen: clampLen($('idLen').value), ner: $('optNer').checked,
     };
     $('idLen').value = opts.idLen;
+    allowCur = new Set(allowLines($('allowList').value).map(lc));
   }
   function saveOpts() {
     try {
-      const o = { mode: opts.mode, idLen: opts.idLen, keywords: $('keywords').value, regexes: $('regexes').value, enc: $('enc').value };
+      const o = { mode: opts.mode, idLen: opts.idLen, keywords: $('keywords').value, regexes: $('regexes').value, allow: $('allowList').value, enc: $('enc').value };
       OPT_IDS.forEach(id => (o[id] = $(id).checked));
       localStorage.setItem(LS_OPTS, JSON.stringify(o));
     } catch { /* 無法使用 localStorage 時忽略 */ }
@@ -794,17 +844,18 @@
   function readDefault() {
     let raw = null; try { raw = localStorage.getItem(LS_KWDEF); } catch { /* 忽略 */ }
     if (raw === null) return null;
-    try { const j = JSON.parse(raw); if (j && Array.isArray(j.keywords)) return { keywords: j.keywords.map(String), regexes: Array.isArray(j.regexes) ? j.regexes.map(String) : [], options: j.options || null }; } catch { /* 舊格式 */ }
-    return { keywords: kwList(raw), regexes: [], options: null };
+    try { const j = JSON.parse(raw); if (j && Array.isArray(j.keywords)) return { keywords: j.keywords.map(String), regexes: Array.isArray(j.regexes) ? j.regexes.map(String) : [], allow: Array.isArray(j.allow) ? j.allow.map(String) : null, options: j.options || null }; } catch { /* 舊格式 */ }
+    return { keywords: kwList(raw), regexes: [], allow: null, options: null };
   }
   function loadOpts() {
     try {
       const o = JSON.parse(localStorage.getItem(LS_OPTS) || 'null');
-      if (!o) { const d = readDefault(); if (d) { applyOptions(d.options); $('keywords').value = d.keywords.join(', '); $('regexes').value = d.regexes.join('\n'); } updateKwCount(); return; }
+      if (!o) { const d = readDefault(); if (d) { applyOptions(d.options); $('keywords').value = d.keywords.join(', '); $('regexes').value = d.regexes.join('\n'); if (d.allow) $('allowList').value = d.allow.join('\n'); } updateKwCount(); return; }
       OPT_IDS.forEach(id => { if (typeof o[id] === 'boolean') $(id).checked = o[id]; });
       const r = document.querySelector(`input[name=mode][value="${o.mode}"]`); if (r) r.checked = true;
       if (typeof o.keywords === 'string') $('keywords').value = o.keywords;
       if (typeof o.regexes === 'string') $('regexes').value = o.regexes;
+      if (typeof o.allow === 'string') $('allowList').value = o.allow;
       updateKwCount();
       if (o.enc) $('enc').value = o.enc;
       if (o.idLen) $('idLen').value = clampLen(o.idLen);
@@ -834,6 +885,13 @@
     const enc = $('enc').value;
     for (const f of list) {
       const item = { file: f, name: f.name, size: f.size };
+      if (OFFICE_RE.test(f.name)) {
+        // Word / Excel：解開後只取文字節點，raw 是串起來的文字（給遮蔽、Regex 試跑、名詞辨識用）
+        try { item.office = await loadOffice(f); item.raw = item.office.raw; }
+        catch (err) { console.error('[anonymizer] Office 檔解析失敗', f.name, err); item.error = '無法解析：' + err.message; }
+        files.push(item);
+        continue;
+      }
       const text = await readFile(f, enc);
       if (text === null) item.error = '讀取失敗';
       else if (/\u0000/.test(text.slice(0, 8000))) item.binary = true;
@@ -845,6 +903,7 @@
   async function rereadAll() {
     const enc = $('enc').value;
     for (const it of files) {
+      if (it.office || OFFICE_RE.test(it.name)) continue;   // Office 檔與編碼無關
       const text = await readFile(it.file, enc);
       it.error = it.binary = undefined; it.raw = undefined;
       if (text === null) it.error = '讀取失敗';
@@ -854,12 +913,19 @@
     processFiles();
   }
   function processFiles(prepared) {
-    if (!prepared) { readOpts(); rxPrepare(); }
+    if (!prepared) { readOpts(); rxPrepare(); nerCur = nerCollect(); }
     usedFiles = new Map();
     for (const it of files) {
       if (it.raw === undefined) continue;
-      const r = anonymize(it.raw, usedFiles);
-      it.out = r.out; it.c = r.c;
+      const r = anonymize(it.raw, usedFiles, nerCur.names);
+      it.c = r.c;
+      if (it.office) {
+        try {
+          it.office.newTexts = applyOps(it.office.segs, alignOps(it.raw, r.out));
+          it.out = officePreview(it.office, usedFiles);
+          it.error = undefined;
+        } catch (err) { console.error('[anonymizer] Office 檔處理失敗', it.name, err); it.out = undefined; it.error = '處理失敗：' + err.message; }
+      } else it.out = r.out;
       it.outName = outFileName(it.name, usedFiles);
     }
     renderFiles(); renderMap(); saveCache();
@@ -874,7 +940,8 @@
     const tb = $('fileBody'); tb.innerHTML = '';
     $('fileTable').hidden = !files.length;
     const ok = files.some(f => f.out !== undefined);
-    ['btnZip', 'btnDlAll', 'btnMergeDl', 'btnMergeCopy'].forEach(id => ($(id).disabled = !ok));
+    const busy = nerCur.pending > 0;   // 名詞辨識還沒跑完時不能下載，避免漏遮
+    ['btnZip', 'btnDlAll', 'btnMergeDl', 'btnMergeCopy'].forEach(id => { $(id).disabled = !ok || busy; $(id).title = busy ? '名詞辨識中，完成後才能下載' : ''; });
     $('btnClearFiles').disabled = !files.length;
     if (!files.length) $('filePreview').hidden = true;
     files.forEach((it, idx) => {
@@ -889,9 +956,11 @@
         const cnt = td(String(total(it.c))); cnt.title = statText(it.c); tr.append(cnt);
         const act = document.createElement('td');
         const box = document.createElement('div'); box.className = 'btns';
+        const dl = iconBtn('i-download', '下載', () => downloadItem(it));
+        dl.disabled = busy; if (busy) dl.title = '名詞辨識中，完成後才能下載';
         box.append(
           iconBtn('i-eye', '預覽', () => { const p = $('filePreview'); p.hidden = false; p.value = it.out; p.scrollIntoView({ block: 'nearest' }); }),
-          iconBtn('i-download', '下載', () => download(it.outName, it.out)),
+          dl,
           iconBtn('i-trash', '', () => { files.splice(idx, 1); processFiles(); })
         );
         act.append(box); tr.append(act);
@@ -912,6 +981,12 @@
     } catch (err) { console.error('[anonymizer] 下載失敗', err); flash('toastFiles', '下載失敗'); }
   }
   function download(name, text) { downloadBlob(name, new Blob([text], { type: 'text/plain;charset=utf-8' })); }
+  // 批次檔案下載：Office 檔要先重建成 .docx / .xlsx
+  async function downloadItem(it) {
+    if (!it.office) return download(it.outName, it.out);
+    try { downloadBlob(it.outName, await buildOffice(it.office)); }
+    catch (err) { console.error('[anonymizer] Office 檔輸出失敗', it.name, err); flash('toastFiles', '輸出失敗：' + err.message); }
+  }
 
   /* ---------- ZIP（不壓縮 store 模式，不需外部套件） ---------- */
   const CRC_TABLE = (() => {
@@ -924,14 +999,14 @@
     for (let i = 0; i < u8.length; i++) c = CRC_TABLE[(c ^ u8[i]) & 0xFF] ^ (c >>> 8);
     return (c ^ 0xFFFFFFFF) >>> 0;
   }
-  function makeZip(items) {   // items: [{name, text}]
+  function makeZip(items) {   // items: [{name, text}] 或 [{name, data: Uint8Array}]
     const enc = new TextEncoder(), chunks = [], central = [];
     const d = new Date();
     const dosTime = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
     const dosDate = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
     let offset = 0;
     for (const it of items) {
-      const nameB = enc.encode(it.name), data = enc.encode(it.text), crc = crc32(data);
+      const nameB = enc.encode(it.name), data = it.data || enc.encode(it.text), crc = crc32(data);
       const lh = new DataView(new ArrayBuffer(30));
       lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(8, 0, true);
       lh.setUint16(10, dosTime, true); lh.setUint16(12, dosDate, true); lh.setUint32(14, crc, true);
@@ -957,21 +1032,715 @@
     const d = new Date(), p = n => String(n).padStart(2, '0');
     return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
   }
-  function zipFiles(list, prefix, toastId) {
+  async function zipFiles(list, prefix, toastId) {
     const ok = list.filter(f => f.out !== undefined);
     if (!ok.length) return;
     const seen = new Map();
-    const entries = ok.map(f => {
-      let name = (f.outName || 'file.txt').replace(/[\\/:*?"<>|]/g, '_');
-      const k = name.toLowerCase(), c = seen.get(k) || 0;
-      seen.set(k, c + 1);
-      if (c) { const i = name.lastIndexOf('.'); name = i > 0 ? `${name.slice(0, i)} (${c + 1})${name.slice(i)}` : `${name} (${c + 1})`; }
-      return { name, text: f.out };
-    });
     try {
+      const entries = [];
+      for (const f of ok) {
+        let name = (f.outName || 'file.txt').replace(/[\\/:*?"<>|]/g, '_');
+        const k = name.toLowerCase(), c = seen.get(k) || 0;
+        seen.set(k, c + 1);
+        if (c) { const i = name.lastIndexOf('.'); name = i > 0 ? `${name.slice(0, i)} (${c + 1})${name.slice(i)}` : `${name} (${c + 1})`; }
+        entries.push(f.office ? { name, data: new Uint8Array(await (await buildOffice(f.office)).arrayBuffer()) } : { name, text: f.out });
+      }
       downloadBlob(`${prefix}-${stamp()}.zip`, makeZip(entries));
       flash(toastId, `已打包 ${entries.length} 個檔案`);
     } catch (err) { console.error('[anonymizer] 打包失敗', err); flash(toastId, '打包失敗'); }
+  }
+
+  /* ---------- Office（.docx / .xlsx）：解開 ZIP、只改文字節點，其他內容原封不動 ---------- */
+  const OFFICE_RE = /\.(docx|docm|xlsx|xlsm)$/i;
+  const OFFICE_MIME = {
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    docm: 'application/vnd.ms-word.document.macroEnabled.12',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    xlsm: 'application/vnd.ms-excel.sheet.macroEnabled.12',
+  };
+  async function pipeBytes(u8, ts) { return new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(ts)).arrayBuffer()); }
+  const inflateRaw = u8 => pipeBytes(u8, new DecompressionStream('deflate-raw'));
+  const deflateRaw = u8 => pipeBytes(u8, new CompressionStream('deflate-raw'));
+
+  function readZip(u8) {
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    let eocd = -1;
+    for (let i = u8.length - 22; i >= Math.max(0, u8.length - 65557); i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    if (eocd < 0) throw new Error('不是有效的 Office 檔（可能有密碼保護或檔案損毀）');
+    const count = dv.getUint16(eocd + 10, true), cdOff = dv.getUint32(eocd + 16, true);
+    if (count === 0xFFFF || cdOff === 0xFFFFFFFF) throw new Error('不支援 ZIP64 格式');
+    const dec = new TextDecoder(), out = [];
+    let p = cdOff;
+    for (let n = 0; n < count; n++) {
+      if (dv.getUint32(p, true) !== 0x02014b50) throw new Error('ZIP 目錄損毀');
+      const flags = dv.getUint16(p + 8, true), method = dv.getUint16(p + 10, true);
+      const time = dv.getUint16(p + 12, true), date = dv.getUint16(p + 14, true), crc = dv.getUint32(p + 16, true);
+      const csize = dv.getUint32(p + 20, true), usize = dv.getUint32(p + 24, true);
+      const nl = dv.getUint16(p + 28, true), xl = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true);
+      const lo = dv.getUint32(p + 42, true);
+      if (csize === 0xFFFFFFFF || usize === 0xFFFFFFFF || lo === 0xFFFFFFFF) throw new Error('不支援 ZIP64 格式');
+      if (flags & 1) throw new Error('檔案內容有加密');
+      const name = dec.decode(u8.subarray(p + 46, p + 46 + nl));
+      if (dv.getUint32(lo, true) !== 0x04034b50) throw new Error('ZIP 檔頭損毀：' + name);
+      const start = lo + 30 + dv.getUint16(lo + 26, true) + dv.getUint16(lo + 28, true);
+      out.push({ name, flags, method, time, date, crc, csize, usize, raw: u8.subarray(start, start + csize) });
+      p += 46 + nl + xl + cl;
+    }
+    return out;
+  }
+  function zipEntryBytes(e) {
+    if (e.method === 0) return Promise.resolve(e.raw);
+    if (e.method === 8) return inflateRaw(e.raw);
+    return Promise.reject(new Error(`不支援的壓縮方式（${e.method}）：${e.name}`));
+  }
+  // 重新打包：沒改的項目直接沿用原本壓縮好的資料
+  function writeZip(entries) {
+    const enc = new TextEncoder(), chunks = [], central = [];
+    let offset = 0;
+    for (const e of entries) {
+      const nameB = enc.encode(e.name), flags = /[^\x00-\x7f]/.test(e.name) ? 0x0800 : 0;
+      const lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, flags, true); lh.setUint16(8, e.method, true);
+      lh.setUint16(10, e.time, true); lh.setUint16(12, e.date, true); lh.setUint32(14, e.crc, true);
+      lh.setUint32(18, e.raw.length, true); lh.setUint32(22, e.usize, true); lh.setUint16(26, nameB.length, true); lh.setUint16(28, 0, true);
+      chunks.push(new Uint8Array(lh.buffer), nameB, e.raw);
+      const ch = new DataView(new ArrayBuffer(46));
+      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, flags, true); ch.setUint16(10, e.method, true);
+      ch.setUint16(12, e.time, true); ch.setUint16(14, e.date, true); ch.setUint32(16, e.crc, true);
+      ch.setUint32(20, e.raw.length, true); ch.setUint32(24, e.usize, true); ch.setUint16(28, nameB.length, true);
+      ch.setUint32(42, offset, true);
+      central.push(new Uint8Array(ch.buffer), nameB);
+      offset += 30 + nameB.length + e.raw.length;
+    }
+    const cdSize = central.reduce((a, c) => a + c.length, 0);
+    const end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true);
+    end.setUint16(8, entries.length, true); end.setUint16(10, entries.length, true);
+    end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
+    return [...chunks, ...central, new Uint8Array(end.buffer)];
+  }
+
+  // 各部分要讀哪些節點：kind() 回傳 'text'（文字，會出現在預覽）、'hide'（文字，不出現在預覽）、'\t' / '\n'（分隔，不寫回）
+  const NS_W = /wordprocessingml\/(?:2006\/)?main$/, NS_A = /drawingml\/(?:2006\/)?main$/, NS_S = /spreadsheetml\/(?:2006\/)?main$/;
+  const nsIs = (el, re) => re.test(el.namespaceURI || '');
+  const parentIs = (el, name) => !!el.parentNode && el.parentNode.localName === name;
+  const isPara = el => el.localName === 'p' && (nsIs(el, NS_W) || nsIs(el, NS_A));
+  const drawingKind = el => nsIs(el, NS_A) ? (el.localName === 't' ? 'text' : el.localName === 'br' ? '\n' : null) : null;
+  const RULE_WORD = {
+    unit: isPara, attrs: ['author'], preview: true,
+    kind: el => {
+      if (!nsIs(el, NS_W)) return drawingKind(el);
+      const n = el.localName;
+      if (n === 't') return 'text';
+      if (n === 'delText' || n === 'instrText') return 'hide';   // 追蹤修訂刪除的文字、功能變數（例如超連結路徑）
+      if (parentIs(el, 'r')) { if (n === 'tab') return '\t'; if (n === 'br' || n === 'cr' || n === 'fldChar') return '\n'; }
+      return null;
+    },
+  };
+  const sKind = el => nsIs(el, NS_S) && el.localName === 't' ? (parentIs(el, 'rPh') ? 'hide' : 'text') : null;
+  const RULE_SST = { unit: el => el.localName === 'si', preview: true, tsv: true, kind: sKind };
+  const RULE_SHEET = {
+    unit: el => el.localName === 'c', preview: true, tsv: true,
+    kind: el => sKind(el) || (nsIs(el, NS_S) && el.localName === 'v' && el.parentNode.getAttribute('t') === 'str' ? 'text' : null),   // 行內字串、公式的文字結果
+  };
+  const RULE_XCOMMENT = {
+    unit: el => el.localName === 'comment' || el.localName === 'author', preview: true,
+    kind: el => nsIs(el, NS_S) ? (el.localName === 'author' ? 'hide' : sKind(el)) : null,
+  };
+  const RULE_THREAD = { unit: el => el.localName === 'threadedComment', preview: true, kind: el => el.localName === 'text' ? 'text' : null };
+  const RULE_DRAW = { unit: isPara, preview: true, kind: drawingKind };
+  const RULE_PROPS = { unit: () => false, preview: false, kind: el => (!el.firstElementChild && el.textContent ? 'hide' : null) };   // 作者、公司、標題等文件屬性
+  const RULE_RELS = { unit: () => false, preview: false, kind: () => null, attrs: ['Target'], attrOk: el => el.getAttribute('TargetMode') === 'External' };   // 外部連結（檔案路徑、mailto）
+  const attrRule = name => ({ unit: () => false, preview: false, kind: () => null, attrs: [name] });
+  function partRule(kind, name) {
+    let m;
+    if (/^docProps\/(core|app|custom)\.xml$/.test(name)) return { ...RULE_PROPS, order: 90 };
+    if (/(^|\/)_rels\/[^/]*\.rels$/.test(name)) return { ...RULE_RELS, order: 95 };
+    if (kind === 'docx') {
+      if (name === 'word/document.xml') return { ...RULE_WORD, order: 0 };
+      if ((m = name.match(/^word\/(header|footer)\d*\.xml$/))) return { ...RULE_WORD, order: m[1] === 'header' ? 1 : 2, label: m[1] === 'header' ? '【頁首】' : '【頁尾】' };
+      if (name === 'word/footnotes.xml') return { ...RULE_WORD, order: 3, label: '【註腳】' };
+      if (name === 'word/endnotes.xml') return { ...RULE_WORD, order: 4, label: '【章節附註】' };
+      if (name === 'word/comments.xml') return { ...RULE_WORD, order: 5, label: '【註解】' };
+      if (name === 'word/people.xml') return { ...attrRule('author'), order: 80 };
+      return null;
+    }
+    if (name === 'xl/sharedStrings.xml') return { ...RULE_SST, order: 0 };
+    if (/^xl\/worksheets\/sheet\d+\.xml$/.test(name)) return { ...RULE_SHEET, order: 1 };
+    if (/^xl\/comments(?:\/comment)?\d*\.xml$/.test(name)) return { ...RULE_XCOMMENT, order: 2, label: '【註解】' };
+    if (/^xl\/threadedComments\/threadedComment\d*\.xml$/.test(name)) return { ...RULE_THREAD, order: 3, label: '【註解】' };
+    if (/^xl\/drawings\/drawing\d+\.xml$/.test(name)) return { ...RULE_DRAW, order: 4, label: '【圖形文字】' };
+    if (/^xl\/persons\/person\d*\.xml$/.test(name)) return { ...attrRule('displayName'), order: 80 };
+    return null;
+  }
+  // 依文件順序收集文字片段：同一段落（或儲存格）內的片段直接相連，可跨格式比對；段落之間插入虛擬換行
+  function collectSegs(doc, rule, part, segs) {
+    part.from = segs.length;
+    const attrSegs = [];
+    let lastUnit = null, any = false;
+    const unitOf = el => { for (let p = el.parentNode; p && p.nodeType === 1; p = p.parentNode) if (rule.unit(p)) return p; return el; };
+    const walker = doc.createTreeWalker(doc.documentElement, NodeFilter.SHOW_ELEMENT);
+    for (let el = walker.currentNode; el; el = walker.nextNode()) {
+      if (rule.attrs && (!rule.attrOk || rule.attrOk(el))) {
+        for (const at of Array.from(el.attributes)) if (rule.attrs.includes(at.localName) && at.value) attrSegs.push({ text: at.value, el, attr: at, part, pv: false });
+      }
+      const k = rule.kind(el);
+      if (!k) continue;
+      const unit = unitOf(el);
+      if (any && unit !== lastUnit) segs.push({ text: '\n', part, pv: true });
+      lastUnit = unit; any = true;
+      if (k === 'text' || k === 'hide') segs.push({ text: el.textContent, el, part, pv: k === 'text' });
+      else segs.push({ text: k, part, pv: true });
+    }
+    for (const s of attrSegs) { if (any) segs.push({ text: '\n', part, pv: false }); segs.push(s); any = true; }
+    part.to = segs.length;
+  }
+  async function readSheetList(byName, parser, dec) {
+    const wb = byName.get('xl/workbook.xml'), rel = byName.get('xl/_rels/workbook.xml.rels');
+    if (!wb || !rel) return [];
+    const wdoc = parser.parseFromString(dec.decode(await zipEntryBytes(wb)), 'application/xml');
+    const rdoc = parser.parseFromString(dec.decode(await zipEntryBytes(rel)), 'application/xml');
+    const targets = new Map();
+    for (const r of Array.from(rdoc.getElementsByTagNameNS('*', 'Relationship'))) targets.set(r.getAttribute('Id'), r.getAttribute('Target') || '');
+    return Array.from(wdoc.getElementsByTagNameNS('*', 'sheet')).map(s => {
+      const rid = (Array.from(s.attributes).find(a => a.localName === 'id') || {}).value;
+      const t = targets.get(rid) || '';
+      return { name: s.getAttribute('name') || '', path: t.startsWith('/') ? t.slice(1) : 'xl/' + t.replace(/^\.\//, '') };
+    });
+  }
+  async function loadOffice(file) {
+    if (typeof DecompressionStream === 'undefined' || typeof CompressionStream === 'undefined') throw new Error('瀏覽器不支援解壓縮，請改用新版 Chrome / Edge / Firefox');
+    const ext = file.name.split('.').pop().toLowerCase();
+    const kind = ext.startsWith('xls') ? 'xlsx' : 'docx';
+    const entries = readZip(new Uint8Array(await file.arrayBuffer()));
+    const byName = new Map(entries.map(e => [e.name, e]));
+    const main = kind === 'docx' ? 'word/document.xml' : 'xl/workbook.xml';
+    if (!byName.has(main)) throw new Error(`找不到 ${main}，不像是 ${kind === 'docx' ? 'Word' : 'Excel'} 檔`);
+    const parser = new DOMParser(), dec = new TextDecoder();
+    const office = { kind, ext, entries, parts: [], segs: [], sheets: [], raw: '' };
+    const targets = entries.map(e => ({ e, rule: partRule(kind, e.name) })).filter(x => x.rule).sort((a, b) => a.rule.order - b.rule.order);
+    for (const { e, rule } of targets) {
+      const xml = dec.decode(await zipEntryBytes(e));
+      const doc = parser.parseFromString(xml, 'application/xml');
+      if (doc.getElementsByTagName('parsererror').length) { console.warn('[anonymizer] XML 解析失敗，略過', file.name, e.name); continue; }
+      const part = { entry: e, doc, rule, label: rule.label || '', decl: (xml.match(/^﻿?(<\?xml[^>]*\?>)/) || [])[1] || '' };
+      if (office.segs.length) office.segs.push({ text: '\n\n', part, pv: false });   // 各部分之間的分隔
+      collectSegs(doc, rule, part, office.segs);
+      office.parts.push(part);
+    }
+    if (kind === 'xlsx') office.sheets = await readSheetList(byName, parser, dec);
+    office.raw = office.segs.map(s => s.text).join('');
+    console.log(`[anonymizer] ${file.name}：讀取 ${office.parts.length} 個部分、${office.segs.filter(s => s.el).length} 個文字片段`);
+    return office;
+  }
+
+  // 把「原文 → 遮蔽結果」換算成取代區段 {s, e, rep}：依代號對應的原文長度逐段對齊；對不上時改用逐段搜尋
+  function alignOps(src, out) {
+    if (src === out) return [];
+    const byTok = new Map();
+    for (const e of cache.values()) byTok.set(fmt(e), e);
+    const ops = [], parts = out.split(TOKEN_SPLIT);
+    let ip = 0;
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if (!part) continue;
+      const e = (i % 2) ? byTok.get(part) : null;
+      if (!e || src.startsWith(part, ip)) {
+        if (!src.startsWith(part, ip)) ops.push({ s: ip, e: ip + part.length, rep: part });   // 例如磁碟代號換成 X:
+        ip += part.length;
+        continue;
+      }
+      let len = e.original.length;
+      if (isFileP(e.prefix)) { const d = e.original.lastIndexOf('.'); if (d > 0) len = d; }   // 副檔名保留在結果中
+      ops.push({ s: ip, e: ip + len, rep: part });
+      ip += len;
+    }
+    if (ip === src.length) return ops;
+    console.warn('[anonymizer] 代號長度對不上，改用逐段搜尋對齊');
+    return greedyOps(src, out);
+  }
+  function greedyOps(src, out) {
+    const parts = out.split(TOKEN_SPLIT), ops = [];
+    let ip = 0, pend = '';
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if (!part) continue;
+      if (i % 2) { pend += part; continue; }
+      const j = src.indexOf(part, ip);
+      if (j < 0) { ops.push({ s: ip, e: src.length, rep: pend + parts.slice(i).join('') }); return ops; }
+      if (j > ip || pend) ops.push({ s: ip, e: j, rep: pend });
+      pend = ''; ip = j + part.length;
+    }
+    if (ip < src.length || pend) ops.push({ s: ip, e: src.length, rep: pend });
+    return ops;
+  }
+  // 把取代區段套回各個片段：代號放進被取代文字的第一個片段（沿用它的格式），其餘被取代的字刪掉；虛擬分隔不動
+  function applyOps(segs, ops) {
+    const n = segs.length, starts = new Array(n);
+    let total = 0;
+    for (let i = 0; i < n; i++) { starts[i] = total; total += segs[i].text.length; }
+    const segOf = pos => { let lo = 0, hi = n - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (starts[m] <= pos) lo = m; else hi = m - 1; } return lo; };
+    const endOf = i => starts[i] + segs[i].text.length;
+    const del = new Uint8Array(total + 1), ins = new Map();
+    for (const op of ops) {
+      if (op.e > op.s) del.fill(1, op.s, op.e);
+      if (!op.rep || !n) continue;
+      let k = -1;
+      if (op.e > op.s) for (let i = segOf(op.s); i < n && starts[i] < op.e; i++) if (segs[i].el && segs[i].text.length && endOf(i) > op.s) { k = i; break; }
+      if (k < 0) {   // 純插入或範圍內只有分隔：放在前一個可寫入片段的結尾，沒有的話放在下一個片段開頭
+        for (let i = segOf(op.s); i >= 0; i--) if (segs[i].el && starts[i] <= op.s) { k = i; break; }
+        if (k < 0) for (let i = 0; i < n; i++) if (segs[i].el) { k = i; break; }
+        if (k < 0) continue;
+      }
+      const at = Math.min(Math.max(op.s, starts[k]), endOf(k));
+      if (!ins.has(k)) ins.set(k, []);
+      ins.get(k).push({ at, text: op.rep });
+    }
+    return segs.map((s, i) => {
+      if (!s.el) return s.text;
+      const a = starts[i], t = s.text, list = ins.get(i);
+      let changed = !!list;
+      if (!changed) for (let p = a; p < a + t.length; p++) if (del[p]) { changed = true; break; }
+      if (!changed) return t;
+      let r = '', li = 0;
+      for (let p = a; p < a + t.length; p++) {
+        while (list && li < list.length && list[li].at <= p) r += list[li++].text;
+        if (!del[p]) r += t[p - a];
+      }
+      while (list && li < list.length) r += list[li++].text;
+      return r;
+    });
+  }
+
+  // 預覽與合併用的純文字：Word 依段落；Excel 依工作表輸出成 Tab 分隔
+  function officePreview(o, used) {
+    const nt = o.newTexts, out = [];
+    if (o.kind === 'xlsx') out.push(xlsxPreview(o, used));
+    for (const part of o.parts) {
+      if (!part.rule.preview || part.rule.tsv) continue;
+      let t = '';
+      for (let i = part.from; i < part.to; i++) if (o.segs[i].pv) t += nt[i];
+      t = t.replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
+      if (t) out.push((part.label ? part.label + '\n' : '') + t);
+    }
+    return out.filter(Boolean).join('\n\n');
+  }
+  const colIndex = ref => { let n = 0; for (const ch of ref.toUpperCase()) { const c = ch.charCodeAt(0); if (c < 65 || c > 90) break; n = n * 26 + c - 64; } return n || 1; };
+  function xlsxPreview(o, used) {
+    const nt = o.newTexts;
+    if (!o.elIdx) { o.elIdx = new Map(); o.segs.forEach((s, i) => { if (s.el && !s.attr) o.elIdx.set(s.el, i); }); }
+    const newOf = el => { const i = o.elIdx.get(el); return i === undefined ? el.textContent : nt[i]; };
+    const runText = box => { let s = ''; for (const t of Array.from(box.getElementsByTagNameNS('*', 't'))) if (!parentIs(t, 'rPh')) s += newOf(t); return s; };
+    const docs = new Map(o.parts.map(p => [p.entry.name, p.doc]));
+    const sstDoc = docs.get('xl/sharedStrings.xml');
+    const sst = sstDoc ? Array.from(sstDoc.getElementsByTagNameNS('*', 'si')).map(runText) : [];
+    const child = (el, name) => Array.from(el.children).find(x => x.localName === name);
+    const cellText = c => {
+      const t = c.getAttribute('t'), v = child(c, 'v');
+      if (t === 'inlineStr') { const is = child(c, 'is'); return is ? runText(is) : ''; }
+      if (!v) return '';
+      if (t === 's') return sst[parseInt(v.textContent, 10)] ?? '';
+      if (t === 'str') return newOf(v);
+      if (t === 'b') return v.textContent === '1' ? 'TRUE' : 'FALSE';
+      return v.textContent;
+    };
+    const sheets = o.sheets.length ? o.sheets
+      : [...docs.keys()].filter(n => /^xl\/worksheets\/sheet\d+\.xml$/.test(n)).map((path, i) => ({ name: `Sheet${i + 1}`, path }));
+    const blocks = [];
+    for (const sh of sheets) {
+      const doc = docs.get(sh.path);
+      if (!doc) continue;
+      const rows = [];
+      let r = 0;
+      for (const row of Array.from(doc.getElementsByTagNameNS('*', 'row'))) {
+        r = parseInt(row.getAttribute('r'), 10) || r + 1;
+        const cells = [];
+        let ci = 0;
+        for (const c of Array.from(row.children)) {
+          if (c.localName !== 'c') continue;
+          const ref = c.getAttribute('r');
+          ci = ref ? colIndex(ref) : ci + 1;
+          const v = cellText(c);
+          if (v !== '') cells[ci - 1] = v.replace(/[\t\r\n]+/g, ' ');
+        }
+        if (cells.length) rows.push(Array.from(cells, x => x ?? '').join('\t'));
+      }
+      // 工作表名稱只在預覽中遮蔽（檔案內的名稱不改，避免公式參照失效）
+      if (rows.length) blocks.push(`【工作表：${anonymize(sh.name, used, nerCur.names).out}】\n` + rows.join('\n'));
+    }
+    return blocks.join('\n\n');
+  }
+  function setNodeText(el, v) {
+    el.textContent = v;
+    if (el.localName === 't' && (nsIs(el, NS_W) || nsIs(el, NS_S)) && /^\s|\s$/.test(v)) el.setAttributeNS('http://www.w3.org/XML/1998/namespace', 'xml:space', 'preserve');
+  }
+  async function buildOffice(o) {
+    if (!o.newTexts) throw new Error('尚未處理');
+    o.segs.forEach((s, i) => {
+      if (!s.el) return;
+      const v = o.newTexts[i], cur = s.cur ?? s.text;
+      if (v === cur) return;
+      if (s.attr) s.attr.value = v; else setNodeText(s.el, v);
+      s.cur = v;
+    });
+    const dirty = new Set();
+    for (const s of o.segs) if (s.el && (s.cur ?? s.text) !== s.text) dirty.add(s.part);
+    const enc = new TextEncoder(), ser = new XMLSerializer(), changed = new Map();
+    for (const part of dirty) {
+      const body = ser.serializeToString(part.doc).replace(/^<\?xml[^>]*\?>\s*/, '');
+      const decl = part.decl ? part.decl.replace(/encoding=(["'])[^"']*\1/i, 'encoding="UTF-8"') : '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+      const data = enc.encode(decl + '\r\n' + body);
+      changed.set(part.entry, { crc: crc32(data), usize: data.length, raw: await deflateRaw(data) });
+    }
+    const entries = o.entries.map(e => { const c = changed.get(e); return c ? { ...e, method: 8, ...c } : e; });
+    return new Blob(writeZip(entries), { type: OFFICE_MIME[o.ext] || 'application/octet-stream' });
+  }
+
+  /* ---------- 中文名詞辨識（選用：勾選後才下載模型，在背景執行緒執行，結果逐行快取） ---------- */
+  const NER_LIB = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.2/dist/transformers.min.js';
+  const NER_MODEL = 'Xenova/bert-base-chinese-ner';   // 中研院 CKIP bert-base-chinese-ner 的 ONNX 版
+  const NER_FILE = `https://huggingface.co/${NER_MODEL}/resolve/main/onnx/model_quantized.onnx`;
+  const NER_CACHE = 'transformers-cache';
+  const NER_MIN = 0.5;            // 最低信心分數
+  // 要遮蔽的實體類型：人名、組織、國家城市、地點、建築設施、族群團體、事件、產品、作品、法律（不含語言與日期、時間、數字、金額等）
+  const NER_TYPES = ['PERSON', 'ORG', 'GPE', 'LOC', 'FAC', 'NORP', 'EVENT', 'PRODUCT', 'WORK_OF_ART', 'LAW'];
+  const NER_BATCH_CHARS = 3000;   // 每次送進背景執行緒的字數
+  const HAN = /\p{Script=Han}/u;
+  const ner = { state: 'idle', mode: 'worker', worker: null, busy: false, inflight: [], error: '', loaded: 0, total: 0 };
+  const nerLine = new Map();      // 每行文字的雜湊 → 該行找到的名詞
+  let nerQueue = [], nerQueued = new Set(), nerWanted = new Set();
+  let nerCur = { names: [], pending: 0 };
+
+  // 辨識程式（以 toString 轉成獨立腳本在背景執行緒執行，不能引用外部變數）；scope 在 Worker 內是 self，主執行緒備援時是假物件
+  function nerWorkerMain(cfg, scope) {
+    let T, tokenizer, model, id2label, CLS = 101, SEP = 102, UNK = 100, BOUND = 102;
+    const MAX = 510;   // BERT 上限 512，扣掉 [CLS]、[SEP]
+    const charCache = new Map();
+    let chain = Promise.resolve();
+    scope.onmessage = e => {
+      const msg = e.data;
+      chain = chain.then(() => handle(msg)).catch(err => scope.postMessage({ type: 'error', id: msg.id, message: String((err && err.message) || err) }));
+    };
+    scope.postMessage({ type: 'hello' });   // 啟動成功的訊號
+    async function handle(msg) {
+      if (msg.type === 'load') {
+        T = await import(cfg.lib);
+        T.env.allowLocalModels = false;
+        const files = {};
+        const progress_callback = p => {
+          if (p.status !== 'progress' || !p.file) return;
+          files[p.file] = [p.loaded || 0, p.total || 0];
+          let l = 0, t = 0;
+          for (const [a, b] of Object.values(files)) { l += a; t += b; }
+          scope.postMessage({ type: 'dl', loaded: l, total: t });
+        };
+        tokenizer = await T.AutoTokenizer.from_pretrained(cfg.model, { progress_callback });
+        model = await T.AutoModelForTokenClassification.from_pretrained(cfg.model, { dtype: 'q8', device: 'wasm', progress_callback });
+        id2label = model.config.id2label;
+        CLS = tokenizer.convert_tokens_to_ids('[CLS]') ?? 101;
+        SEP = tokenizer.convert_tokens_to_ids('[SEP]') ?? 102;
+        UNK = tokenizer.convert_tokens_to_ids('[UNK]') ?? 100;
+        const b = tokenizer.convert_tokens_to_ids('。');
+        BOUND = (b !== undefined && b !== null && b !== UNK) ? b : SEP;   // 行與行之間的邊界 token
+        scope.postMessage({ type: 'loaded', id: msg.id });
+      } else if (msg.type === 'detect') {
+        scope.postMessage({ type: 'result', id: msg.id, results: await detect(msg.lines, msg.min, msg.types) });
+      }
+    }
+    // 中文、標點每字一個 token；連續英數字交給 WordPiece；換行轉成邊界 token，讓實體不會跨行
+    function buildTokens(text) {
+      const out = [], re = /[A-Za-z0-9]+|\s+|[\s\S]/gu;
+      let m;
+      while ((m = re.exec(text))) {
+        const s = m.index, str = m[0];
+        if (/^\s/.test(str)) { if (str.includes('\n')) out.push({ id: BOUND, s, e: s + str.length, b: true }); continue; }
+        if (/^[A-Za-z0-9]/.test(str)) {
+          const pieces = tokenizer.tokenize(str), lens = pieces.map(p => p.replace(/^##/, '').length);
+          if (!pieces.length || pieces.includes('[UNK]') || lens.reduce((x, y) => x + y, 0) !== str.length) { out.push({ id: UNK, s, e: s + str.length }); continue; }
+          const ids = tokenizer.convert_tokens_to_ids(pieces);
+          let p = s;
+          for (let i = 0; i < pieces.length; i++) { out.push({ id: ids[i] ?? UNK, s: p, e: p + lens[i] }); p += lens[i]; }
+          continue;
+        }
+        let id = charCache.get(str);
+        if (id === undefined) {
+          const t = tokenizer.tokenize(str);
+          id = t.length === 0 ? null : t.length === 1 ? (tokenizer.convert_tokens_to_ids(t[0]) ?? UNK) : UNK;
+          charCache.set(str, id);
+        }
+        if (id !== null) out.push({ id, s, e: s + str.length });
+      }
+      return out;
+    }
+    function chunkTokens(text, toks) {
+      const chunks = [];
+      let start = 0;
+      while (start < toks.length) {
+        let end = Math.min(start + MAX, toks.length);
+        if (end < toks.length) {
+          for (let i = end - 1; i > start + MAX / 2; i--) if (toks[i].b || /[。！？!?；;]/.test(text.slice(toks[i].s, toks[i].e))) { end = i + 1; break; }
+        }
+        chunks.push(toks.slice(start, end));
+        start = end;
+      }
+      return chunks;
+    }
+    async function runChunk(toks) {
+      const ids = [CLS, ...toks.map(t => t.id), SEP], n = ids.length;
+      const out = await model({
+        input_ids: new T.Tensor('int64', BigInt64Array.from(ids, x => BigInt(x)), [1, n]),
+        attention_mask: new T.Tensor('int64', new BigInt64Array(n).fill(1n), [1, n]),
+        token_type_ids: new T.Tensor('int64', new BigInt64Array(n), [1, n]),
+      });
+      let logits = out.logits;
+      if (logits.type !== 'float32') logits = logits.to('float32');
+      const L = logits.dims[2], data = logits.data, preds = [];
+      for (let i = 0; i < toks.length; i++) {
+        const off = (i + 1) * L;
+        let best = 0, bv = -Infinity, sum = 0;
+        for (let k = 0; k < L; k++) if (data[off + k] > bv) { bv = data[off + k]; best = k; }
+        for (let k = 0; k < L; k++) sum += Math.exp(data[off + k] - bv);
+        preds.push({ label: id2label[best] || 'O', score: 1 / sum });
+      }
+      return preds;
+    }
+    // BIES 標籤組回實體區段
+    function decodeSpans(toks, preds, text) {
+      const spans = [];
+      let cur = null;
+      const close = () => { if (cur) { spans.push(cur); cur = null; } };
+      for (let i = 0; i < toks.length; i++) {
+        if (toks[i].b) { close(); continue; }
+        const { label, score } = preds[i];
+        if (label === 'O') { close(); continue; }
+        const m = /^([BIES])-(.+)$/.exec(label), p = m ? m[1] : 'I', type = m ? m[2] : label;
+        if (p === 'B' || p === 'S' || !cur || cur.type !== type) { close(); cur = { type, s: toks[i].s, e: toks[i].e, sc: [score] }; }
+        else { cur.e = toks[i].e; cur.sc.push(score); }
+        if (p === 'S' || p === 'E') close();
+      }
+      close();
+      return spans.map(sp => ({ type: sp.type, text: text.slice(sp.s, sp.e), s: sp.s, score: sp.sc.reduce((a, b) => a + b, 0) / sp.sc.length }));
+    }
+    const validName = n => { const len = [...n].length; return len >= 2 && len <= 30 && /\p{Script=Han}/u.test(n) && !/[\s[\]\\/:*?"<>|]/.test(n); };
+    async function detect(lines, min, types) {
+      const text = lines.join('\n'), starts = [];
+      let p = 0;
+      for (const l of lines) { starts.push(p); p += l.length + 1; }
+      const out = lines.map(() => new Set());
+      for (const c of chunkTokens(text, buildTokens(text))) {
+        const preds = await runChunk(c);
+        for (const sp of decodeSpans(c, preds, text)) {
+          if (!types.includes(sp.type) || sp.score < min) continue;
+          const name = sp.text.trim();
+          if (!validName(name)) continue;
+          let lo = 0, hi = starts.length - 1;
+          while (lo < hi) { const m = (lo + hi + 1) >> 1; if (starts[m] <= sp.s) lo = m; else hi = m - 1; }
+          out[lo].add(name);
+        }
+      }
+      return out.map(s => [...s]);
+    }
+  }
+
+  // 先在背景執行緒載入；背景執行緒起不來（例如用 file:// 開啟）或載入失敗時，自動改在主執行緒執行
+  function nerStart() {
+    return new Promise((resolve, reject) => {
+      let hello = false, timer = 0;
+      const onMsg = m => {
+        if (m.type === 'hello') { hello = true; clearTimeout(timer); }
+        else if (m.type === 'dl') { ner.loaded = m.loaded; ner.total = m.total; nerStatus(); }
+        else if (m.type === 'loaded') resolve();
+        else if (m.type === 'result') nerOnResult(m.results);
+        else if (m.type === 'error') {
+          if (ner.state !== 'loading') nerOnBatchError(m.message);
+          else if (ner.mode === 'worker') startInline('背景執行緒載入失敗：' + m.message);
+          else reject(new Error(m.message));
+        }
+      };
+      const startInline = reason => {
+        clearTimeout(timer);
+        console.warn('[anonymizer] 改在主執行緒執行名詞辨識（辨識時頁面可能短暫停頓）。原因：', reason);
+        if (ner.worker) ner.worker.terminate();
+        ner.mode = 'inline';
+        ner.worker = nerInline(onMsg);
+        ner.worker.postMessage({ type: 'load', id: 0 });
+      };
+      ner.mode = 'worker';
+      let w;
+      try {
+        const src = `(${nerWorkerMain.toString()})(${JSON.stringify({ lib: NER_LIB, model: NER_MODEL })}, self);`;
+        w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+      } catch (err) { startInline('無法建立背景執行緒：' + err.message); return; }
+      ner.worker = w;
+      w.onmessage = e => onMsg(e.data);
+      w.onerror = e => {
+        if (e.preventDefault) e.preventDefault();
+        const why = e.message || '背景執行緒發生錯誤';
+        if (ner.state === 'loading' && ner.mode === 'worker') startInline(why);
+        else if (ner.state === 'loading') reject(new Error(why));
+        else nerFail(new Error(why));
+      };
+      timer = setTimeout(() => { if (!hello && ner.mode === 'worker') startInline('背景執行緒啟動逾時'); }, 8000);
+      w.postMessage({ type: 'load', id: 0 });
+    });
+  }
+  // 主執行緒備援：用同一份辨識程式，訊息改成非同步呼叫
+  function nerInline(onMsg) {
+    let dead = false;
+    const scope = { onmessage: null, postMessage: m => { if (!dead) setTimeout(() => onMsg(m), 0); } };
+    nerWorkerMain({ lib: NER_LIB, model: NER_MODEL }, scope);
+    return {
+      postMessage: m => setTimeout(() => { if (!dead && scope.onmessage) scope.onmessage({ data: m }); }, 0),
+      terminate: () => { dead = true; },
+    };
+  }
+  function nerStop() {
+    if (ner.worker) { ner.worker.terminate(); ner.worker = null; }
+    ner.busy = false; ner.inflight = []; nerQueue = []; nerQueued.clear();
+  }
+  async function nerIsCached() {
+    if (!('caches' in self)) return false;
+    try { return !!(await (await caches.open(NER_CACHE)).match(NER_FILE)); } catch { return false; }
+  }
+  // allowDownload=false：只在模型已在瀏覽器快取時才載入（開頁時使用），不會自動下載
+  async function nerEnsure(allowDownload) {
+    if (ner.state === 'ready' || ner.state === 'loading') return;
+    if (!allowDownload) {
+      ner.state = 'checking'; nerStatus();
+      const cached = await nerIsCached();
+      if (ner.state !== 'checking') return;
+      if (!cached) { ner.state = 'need'; nerStatus(); return; }
+    }
+    ner.state = 'loading'; ner.error = ''; ner.loaded = ner.total = 0; nerStatus();
+    console.log('[anonymizer] 載入名詞辨識模型');
+    const t0 = performance.now();
+    try {
+      await nerStart();
+      ner.state = 'ready';
+      console.log(`[anonymizer] 名詞辨識模型已載入（${Math.round(performance.now() - t0)} ms）`);
+    } catch (err) {
+      console.error('[anonymizer] 名詞辨識模型載入失敗', err);
+      ner.state = 'error'; ner.error = err.message;
+      nerStop();
+    }
+    processAll();
+  }
+  function nerFail(err) {
+    console.error('[anonymizer] 名詞辨識背景執行緒錯誤', err);
+    ner.state = 'error'; ner.error = err.message;
+    nerStop(); processAll();
+  }
+  function nerOnBatchError(message) {
+    console.error('[anonymizer] 名詞辨識失敗，這批文字略過', message);
+    ner.error = message;
+    nerOnResult([]);   // 這批標記為沒有名詞，避免一直重試
+  }
+  function nerOnResult(results) {
+    ner.inflight.forEach((q, i) => { nerLine.set(q.k, results[i] || []); nerQueued.delete(q.k); });
+    if (nerLine.size > 300000) nerLine.clear();
+    ner.inflight = []; ner.busy = false;
+    nerPump();
+    if (ner.busy) nerStatus(); else processAll();   // 全部跑完才重新套用
+  }
+  function nerLinesOf(text) {
+    const out = [], seen = new Set();
+    for (const line of text.split(/\r?\n/)) {
+      if (!HAN.test(line)) continue;   // 沒有中文字的行不用跑模型
+      const k = fnv(line);
+      if (!seen.has(k)) { seen.add(k); out.push({ k, line }); }
+    }
+    return out;
+  }
+  // 收集目前所有文字（① 與批次檔案）已辨識的名詞；還沒辨識的行排入佇列。所有文字共用同一份名詞清單
+  function nerCollect() {
+    const res = { names: [], pending: 0 };
+    if (!opts.ner || (ner.state !== 'ready' && ner.state !== 'loading')) { nerQueue = []; nerQueued.clear(); nerWanted = new Set(); return res; }
+    const names = new Set(), wanted = new Set();
+    const visit = list => {
+      for (const { k, line } of list) {
+        if (wanted.has(k)) continue;
+        wanted.add(k);
+        const r = nerLine.get(k);
+        if (r) { for (const x of r) names.add(x); continue; }
+        res.pending++;
+        if (!nerQueued.has(k)) { nerQueued.add(k); nerQueue.push({ k, line }); }
+      }
+    };
+    visit(nerLinesOf($('input').value));
+    for (const it of files) {
+      if (typeof it.raw !== 'string') continue;
+      if (!it._ner || it._ner.raw !== it.raw) it._ner = { raw: it.raw, list: nerLinesOf(it.raw) };
+      visit(it._ner.list);
+    }
+    nerWanted = wanted;
+    res.names = [...names].filter(x => !isAllowed(x));
+    nerPump();
+    return res;
+  }
+  function nerPump() {
+    if (ner.state !== 'ready' || ner.busy || !ner.worker) return;
+    nerQueue = nerQueue.filter(q => { if (nerWanted.has(q.k)) return true; nerQueued.delete(q.k); return false; });   // 丟掉已不需要的（例如文字已修改）
+    if (!nerQueue.length) return;
+    const batch = [];
+    let chars = 0;
+    while (nerQueue.length && (!batch.length || chars < NER_BATCH_CHARS)) { const q = nerQueue.shift(); batch.push(q); chars += q.line.length; }
+    ner.busy = true; ner.inflight = batch;
+    ner.worker.postMessage({ type: 'detect', id: Date.now(), lines: batch.map(q => q.line), min: NER_MIN, types: NER_TYPES });
+  }
+  async function nerDelete() {
+    nerStop();
+    ner.state = 'need';
+    let n = 0;
+    try {
+      const c = await caches.open(NER_CACHE);
+      for (const r of await c.keys()) if (r.url.includes(`/${NER_MODEL}/`)) { await c.delete(r); n++; }
+    } catch (err) { console.warn('[anonymizer] 刪除模型快取失敗', err); }
+    console.log(`[anonymizer] 已刪除 ${n} 個模型快取檔案`);
+    processAll();
+  }
+  function nerStatus() {
+    const box = $('nerBox'), st = $('nerStatus'), btn = $('btnNer');
+    box.hidden = !opts.ner;
+    btn.hidden = true; btn.onclick = null; btn.title = '';
+    const left = nerQueue.length + ner.inflight.length;
+    const show = (text, label, fn, title) => { st.textContent = text; if (label) { btn.hidden = false; btn.textContent = label; btn.onclick = fn; btn.title = title || ''; } };
+    switch (ner.state) {
+      case 'need': show(location.protocol === 'file:' ? '模型尚未載入（約 125 MB；用 file:// 開啟時瀏覽器無法快取，每次開頁都要重新下載）' : '模型尚未下載（約 125 MB，只需下載一次）', '下載模型', () => nerEnsure(true)); break;
+      case 'loading': show(ner.total ? `下載模型 ${fmtSize(ner.loaded)} / ${fmtSize(ner.total)}` : '載入模型中…'); break;
+      case 'ready': if (left) show(`辨識中，剩 ${left} 行`); else show('已啟用' + (ner.mode === 'inline' ? '（主執行緒模式，辨識時頁面可能短暫停頓）' : '') + (ner.error ? `（部分文字辨識失敗：${ner.error}）` : ''), '刪除模型', nerDelete, '刪除瀏覽器中快取的模型檔（約 125 MB），之後要用需重新下載'); break;
+      case 'error': show('模型載入失敗：' + ner.error, '重試', () => nerEnsure(true)); break;
+      default: show('檢查模型快取…');
+    }
+    let msg = '';
+    if (opts.ner) {
+      if (nerCur.pending > 0) msg = ner.state === 'loading' ? '名詞模型載入中，暫停複製' : '名詞辨識中，暫停複製';
+      else if (ner.state === 'need' || ner.state === 'error') msg = '名詞辨識未生效（模型未載入）';
+    }
+    $('nerOut').textContent = msg;
+  }
+
+  /* ---------- 白名單（不遮蔽）：Ctrl＋點擊代號或標示文字可快速加入 ---------- */
+  const allowLines = v => [...new Set(String(v || '').split(/\r?\n/).map(x => x.trim()).filter(Boolean))];
+  function allowEntry(original, toastId) {
+    const v = String(original || '').trim();
+    if (!v) return;
+    if (/[\r\n]/.test(v)) { flash(toastId, '多行內容無法加入白名單'); return; }
+    const list = allowLines($('allowList').value);
+    if (!list.some(x => lc(x) === lc(v))) list.push(v);
+    $('allowList').value = list.join('\n');
+    updateKwCount();
+    processAll();
+    flash(toastId, `已解除遮蔽：${v.length > 30 ? v.slice(0, 30) + '…' : v}`);
+  }
+  function entryByToken(t) {
+    for (const e of cache.values()) if (fmt(e) === t || `[${e.prefix}-${e.id}]` === t || `[${e.id}]` === t) return e;
+    return null;
+  }
+  function tokenAt(text, pos) {
+    const re = new RegExp(TOKEN_SPLIT.source, 'g');
+    let m;
+    while ((m = re.exec(text))) { if (m.index > pos) break; if (pos <= m.index + m[0].length) return m[0]; }
+    return null;
   }
 
   /* ---------- 文字區 ---------- */
@@ -979,11 +1748,13 @@
   function renderOutput(text, used) {
     const box = $('output');
     box.textContent = '';
-    const known = new Set([...used.values()].map(fmt));
+    const known = new Map([...used.values()].map(e => [fmt(e), e]));
     text.split(TOKEN_SPLIT).forEach((part, i) => {
       if (i % 2 && known.has(part)) {
         const sp = document.createElement('span');
-        sp.className = 'hl'; sp.textContent = part; box.append(sp);
+        sp.className = 'hl'; sp.textContent = part;
+        sp.title = `${known.get(part).original}\n（Ctrl＋點擊：加入白名單、解除遮蔽）`;
+        box.append(sp);
       } else if (part) box.append(document.createTextNode(part));
     });
   }
@@ -998,7 +1769,7 @@
       if (!e) { ip += part.length; return; }
       let len = e.original.length;
       if (isFileP(e.prefix)) { const d = e.original.lastIndexOf('.'); if (d > 0) len = d; }  // 副檔名保留在結果中
-      spans.push([ip, ip + len]);
+      spans.push([ip, ip + len, e]);
       ip += len;
     });
     return ip === src.length ? spans : [];
@@ -1022,29 +1793,43 @@
     paintBackdrop(src, inputSpans(src, outputText, usedText));
   }
   function processText(prepared) {
-    if (!prepared) rxPrepare();
+    if (!prepared) { rxPrepare(); nerCur = nerCollect(); }
     usedText = new Map();
-    const r = anonymize($('input').value, usedText);
+    const r = anonymize($('input').value, usedText, nerCur.names);
     outputText = r.out;
     renderOutput(r.out, usedText);
     renderInput();
+    // 名詞辨識還沒跑完時先不讓複製，避免漏遮
+    $('btnCopyOut').disabled = nerCur.pending > 0;
+    nerStatus();
     renderMap(); saveCache();
   }
-  function processAll() { readOpts(); saveOpts(); rxPrepare(); processText(true); processFiles(true); }
+  function processAll() {
+    readOpts(); saveOpts(); rxPrepare();
+    if (opts.ner && ner.state === 'idle') nerEnsure(false);   // 開頁或匯入設定時：模型已快取才載入，不會自動下載
+    nerCur = nerCollect();
+    processText(true); processFiles(true);
+  }
 
   function usedAll() { return new Map([...usedText, ...usedFiles]); }
   function renderMap() {
     const tb = $('mapBody'); tb.innerHTML = '';
     if (!usedAll().size) {
       const tr = document.createElement('tr'), td = document.createElement('td');
-      td.colSpan = 2; td.className = 'hint'; td.textContent = '目前沒有代號：在 ① 貼上文字或加入檔案後，用到的代號會顯示在這裡。';
+      td.colSpan = 3; td.className = 'hint'; td.textContent = '目前沒有代號：在 ① 貼上文字或加入檔案後，用到的代號會顯示在這裡。';
       tr.append(td); tb.append(tr); return;
     }
     for (const e of usedAll().values()) {
       const tr = document.createElement('tr');
       const a = document.createElement('td'); a.textContent = fmt(e);
       const b = document.createElement('td'); b.textContent = e.original;
-      tr.append(a, b); tb.append(tr);
+      const c = document.createElement('td');
+      if (!/[\r\n]/.test(e.original)) {
+        const btn = iconBtn('i-undo', '解除', () => allowEntry(e.original, 'toastMap'));
+        btn.title = '加入白名單，不再遮蔽這個內容'; btn.style.padding = '2px 8px';
+        c.append(btn);
+      }
+      tr.append(a, b, c); tb.append(tr);
     }
   }
   function mapObject(entries) {
@@ -1061,7 +1846,7 @@
     try { await navigator.clipboard.writeText(text); flash(toastId, '已複製'); }
     catch { flash(toastId, '複製失敗，請手動選取'); }
   }
-  function flash(id, msg) { const el = $(id); el.textContent = msg; clearTimeout(el._t); el._t = setTimeout(() => (el.textContent = ''), 1600); }
+  function flash(id, msg, ms = 1600) { const el = $(id); el.textContent = msg; clearTimeout(el._t); el._t = setTimeout(() => (el.textContent = ''), ms); }
 
   // 兩種格式都還原（有類型 / 無類型），避免切換選項後無法還原；JSON 格式錯誤時會丟出例外
   function buildRestoreDict() {
@@ -1160,17 +1945,53 @@
     return rfiles.filter(f => f.out !== undefined).map(f => `===== ${f.outName} =====\n${f.out}`).join('\n\n');
   }
 
-  const SAMPLE = String.raw`Error: ENOENT: no such file or directory, open 'C:\Users\WangXiaoMing\Documents\ACME\project-x\src\config.json'
+  // 範例：按「範例」隨機顯示一種（不會連續出現同一種），用來展示目前的遮蔽功能；內容皆為虛構
+  const SAMPLES = [
+    { name: '程式錯誤訊息（路徑、使用者、IP、帳密、Token、UUID）', text: String.raw`Error: ENOENT: no such file or directory, open 'C:\Users\WangXiaoMing\Documents\ACME\project-x\src\config.json'
     at Object.openSync (node:fs:601:3)
 專案位置：D:\Work\ACME 客戶\報價系統\main.go
 輸出到 \\MY-PC\share\backup\2026\db.bak
 使用者 WangXiaoMing 的暫存檔：C:/Users/WangXiaoMing/AppData/Local/Temp/tmp123.log.
-連線 192.168.1.23:5432 失敗，本機 127.0.0.1 正常，網卡 00:1A:2B:3C:4D:5E
+連線 192.168.1.23:5432 失敗，本機 127.0.0.1 正常，網卡 00:1A:2B:3C:4D:5E，IPv6 fe80::1c2d:3e4f:5a6b:7c8d
 DB_URL=postgres://admin:S3cr3t!@10.0.0.5/app
 password="hunter2" token=abc123xyz
 Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig
-聯絡 wang.xm@acme.com.tw
-Linux 主機：/home/wangxm/projects/acme-api/server.py 與 ~/notes/todo.md`;
+request_id=3f2b8c1e-9d4a-4e7b-8a6c-1f2e3d4c5b6a 聯絡 wang.xm@acme.com.tw
+Linux 主機：/home/wangxm/projects/acme-api/server.py 與 ~/notes/todo.md` },
+    { name: '網路設備設定檔（設備密碼、SNMP、MAC、私鑰）', text: String.raw`! Cisco 核心交換器
+enable secret 5 $1$mERr$hx5rVt7rPNoS4wqbXKX7m0
+username netadmin privilege 15 secret 9 $9$nhEmQVczB7dqsO$X.HsgL6x1il0RxkOSSvyQYwucySCt7qFm4v7pqCxkKM
+snmp-server community Publ1cR3ad RO
+tacacs-server host 10.20.30.40
+tacacs-server key 7 0822455D0A16
+interface Vlan10
+ ip address 10.10.10.1 255.255.255.0
+ ipv6 address 2001:db8:10::1/64
+! 管理主機 MAC 0011.2233.4455，備援 00-1A-2B-3C-4D-5F
+# Fortinet 防火牆
+config system admin
+    edit "fwadmin"
+        set password ENC SH2Fv7Ttf+5nr2xVHs0Ol8m7MZjYsJIfMhD3qYAVh1zuQ8Bdr8B8jzF9BbA0Hw=
+    next
+end
+# Juniper
+set system root-authentication encrypted-password "$6$abcdef$K1n2o3p4q5r6s7t8u9v0wXyZ"
+備份：\\NAS01\backup\network\core-sw01.cfg，負責人 netadmin@corp.example.com.tw
+-----BEGIN RSA PRIVATE KEY-----
+MIIEowIBAAKCAQEAu1SU1LfVLPHCozMxH2Mo4lgOEePzNm0tRgeLezV6ffAt0gun
+VTLw7onLRnrq0/IzW7yWR7QkrmBL7jTKEn5u+qKhbwKfBstIs+bMY2Zkp18gnTxK
+-----END RSA PRIVATE KEY-----` },
+    { name: '會議紀錄（電話、Email、帳密；人名與公司需勾選「中文名詞」）', text: String.raw`【會議紀錄】2026/11/20 系統驗收會議
+出席：王小明（藍海數位科技）、陳美玲、林志豪
+聯絡窗口：陳美玲 手機 0912-345-678，公司 (02)2345-6789 轉 321，Email meiling.chen@bluesea-tech.com.tw
+地點：台北市信義區松仁路 100 號 12 樓 第一會議室
+決議：
+1. 林志豪於 11/30 前更新驗收報告：\\FILESRV01\專案\驗收\驗收報告.docx
+2. 林志豪的筆電 C:\Users\linzh\Desktop\客戶資料.xlsx 請於結案後刪除
+3. 測試帳號 user=test.lin password=Spring2026! 驗收後停用
+4. 客服專線 0800-123-456；緊急聯絡 +886 933 222 111` },
+  ];
+  let sampleIdx = -1;
 
   /* ---------- 事件 ---------- */
   let tInput;
@@ -1181,7 +2002,7 @@ Linux 主機：/home/wangxm/projects/acme-api/server.py 與 ~/notes/todo.md`;
   const setKw = (list, msg) => { $('keywords').value = list.join(', '); updateKwCount(); processAll(); flash('toastKw', msg); };
   $('btnKwExport').onclick = () => {
     const options = collectOptions();
-    download('anonymizer-settings.json', JSON.stringify({ type: 'anonymizer-settings', version: 3, keywords: kwList($('keywords').value), regexes: rxLines($('regexes').value), options }, null, 2));
+    download('anonymizer-settings.json', JSON.stringify({ type: 'anonymizer-settings', version: 4, keywords: kwList($('keywords').value), regexes: rxLines($('regexes').value), allow: allowLines($('allowList').value), options }, null, 2));
   };
   $('btnKwImport').onclick = () => $('kwFile').click();
   $('kwFile').onchange = async e => {
@@ -1196,6 +2017,7 @@ Linux 主機：/home/wangxm/projects/acme-api/server.py 與 ~/notes/todo.md`;
         if (!Array.isArray(list)) { if (j && typeof j.options === 'object') list = []; else throw 0; }
         if (!Array.isArray(j) && j.options && typeof j.options === 'object') o = j.options;
         if (!Array.isArray(j) && Array.isArray(j.regexes)) $('regexes').value = [...new Set([...rxLines($('regexes').value), ...j.regexes.map(x => String(x).trim()).filter(Boolean)])].join('\n');
+        if (!Array.isArray(j) && Array.isArray(j.allow)) $('allowList').value = allowLines([...allowLines($('allowList').value), ...j.allow.map(String)].join('\n')).join('\n');
         list = list.map(String);
       } catch { list = kwList(t); }
       if (o) {
@@ -1207,7 +2029,7 @@ Linux 主機：/home/wangxm/projects/acme-api/server.py 與 ~/notes/todo.md`;
     } catch (err) { console.warn('[anonymizer] 匯入設定失敗', err); flash('toastKw', '匯入失敗'); }
   };
   $('btnKwSaveDef').onclick = () => {
-    try { localStorage.setItem(LS_KWDEF, JSON.stringify({ keywords: kwList($('keywords').value), regexes: rxLines($('regexes').value), options: collectOptions() })); flash('toastKw', '已存為預設（關鍵字、Regex 與勾選項目）'); }
+    try { localStorage.setItem(LS_KWDEF, JSON.stringify({ keywords: kwList($('keywords').value), regexes: rxLines($('regexes').value), allow: allowLines($('allowList').value), options: collectOptions() })); flash('toastKw', '已存為預設（關鍵字、Regex、白名單與勾選項目）'); }
     catch { flash('toastKw', '無法寫入本機儲存'); }
   };
   $('btnKwLoadDef').onclick = () => {
@@ -1216,7 +2038,8 @@ Linux 主機：/home/wangxm/projects/acme-api/server.py 與 ~/notes/todo.md`;
     applyOptions(d.options);
     if (d.options && typeof d.options.remember === 'boolean') cacheDirty = true;
     $('regexes').value = d.regexes.join('\n');
-    setKw(d.keywords, d.options ? '已載入預設（關鍵字、Regex 與勾選項目）' : '已載入預設（關鍵字）');
+    if (d.allow) $('allowList').value = d.allow.join('\n');
+    setKw(d.keywords, d.options ? '已載入預設（關鍵字、Regex、白名單與勾選項目）' : '已載入預設（關鍵字）');
   };
   $('btnKwClear').onclick = () => { $('regexes').value = ''; setKw([], '已清空關鍵字與 Regex'); };
   // 可摺疊區塊：預設收起，依使用者上次的狀態還原（各自記住）
@@ -1224,11 +2047,45 @@ Linux 主機：/home/wangxm/projects/acme-api/server.py 與 ~/notes/todo.md`;
     try { $(id).open = localStorage.getItem(key) === 'open'; } catch { /* 忽略 */ }
     $(id).addEventListener('toggle', () => { try { localStorage.setItem(key, $(id).open ? 'open' : 'closed'); } catch { /* 忽略 */ } });
   });
-  $('opts').querySelectorAll('input').forEach(el => el.addEventListener('change', () => {
+  $('opts').querySelectorAll('input').forEach(el => el.id !== 'optNer' && el.addEventListener('change', () => {
     if (el.id === 'remember') cacheDirty = true;
     processAll();
   }));
-  $('btnSample').onclick = () => { $('input').value = SAMPLE; processAll(); };
+  // 名詞辨識：使用者勾選時才下載模型
+  $('optNer').addEventListener('change', () => {
+    readOpts();
+    if (opts.ner) nerEnsure(true);
+    processAll();
+  });
+  $('allowList').addEventListener('input', () => { updateKwCount(); clearTimeout(tInput); tInput = setTimeout(processAll, 250); });
+  // Ctrl（Mac 為 Command）＋點擊：把已遮蔽的內容加入白名單
+  const ctrlOf = e => e.ctrlKey || e.metaKey;
+  $('output').addEventListener('click', e => {
+    if (!ctrlOf(e)) return;
+    const sp = e.target.closest('.hl');
+    const ent = sp && entryByToken(sp.textContent);
+    if (ent) { e.preventDefault(); allowEntry(ent.original, 'toastOut'); }
+  });
+  $('input').addEventListener('click', e => {
+    if (!ctrlOf(e)) return;
+    const pos = $('input').selectionStart, src = $('input').value;
+    const spans = inputSpans(src, outputText, usedText);
+    const hit = spans.find(([a, b]) => pos >= a && pos < b) || spans.find(([, b]) => pos === b);
+    if (hit) allowEntry(hit[2].original, 'toastOut');
+  });
+  $('filePreview').addEventListener('click', e => {
+    if (!ctrlOf(e)) return;
+    const t = tokenAt($('filePreview').value, $('filePreview').selectionStart);
+    const ent = t && entryByToken(t);
+    if (ent) allowEntry(ent.original, 'toastFiles');
+  });
+  $('btnSample').onclick = () => {
+    const n = SAMPLES.length;
+    sampleIdx = sampleIdx < 0 ? randInt(n) : (sampleIdx + 1 + randInt(n - 1)) % n;   // 隨機，但不和上一次相同
+    $('input').value = SAMPLES[sampleIdx].text;
+    processAll();
+    flash('toastOut', `範例 ${sampleIdx + 1}/${n}：${SAMPLES[sampleIdx].name}`, 5000);
+  };
   $('btnClear').onclick = () => { $('input').value = ''; processAll(); };
   $('btnCopyOut').onclick = () => copy(outputText, 'toastOut');
   $('btnRegen').onclick = () => { cache.clear(); ids.clear(); cacheDirty = true; processAll(); flash('toastRegen', '已重新產生'); };
@@ -1239,12 +2096,12 @@ Linux 主機：/home/wangxm/projects/acme-api/server.py 與 ~/notes/todo.md`;
   ['dragleave', 'drop'].forEach(t => $('drop').addEventListener(t, e => { e.preventDefault(); $('drop').classList.remove('over'); }));
   $('drop').addEventListener('drop', e => { readOpts(); addFiles([...e.dataTransfer.files]); });
   $('enc').onchange = () => { saveOpts(); readOpts(); rereadAll(); };
-  $('btnDlAll').onclick = async () => {
-    for (const it of files.filter(f => f.out !== undefined)) { download(it.outName, it.out); await new Promise(r => setTimeout(r, 300)); }
-  };
   $('btnMergeDl').onclick = () => download(opts.maskOutName ? 'merged.anon.txt' : 'merged.anon.txt', mergedText());
   $('btnMergeCopy').onclick = () => copy(mergedText(), 'toastFiles');
   $('btnZip').onclick = () => zipFiles(files, 'anonymized', 'toastFiles');
+  $('btnDlAll').onclick = async () => {
+    for (const it of files.filter(f => f.out !== undefined)) { await downloadItem(it); await new Promise(r => setTimeout(r, 300)); }
+  };
   $('btnClearFiles').onclick = () => { files = []; processFiles(); };
 
   $('btnCopyMap').onclick = () => copy(JSON.stringify(mapObject(usedAll().values()), null, 2), 'toastMap');

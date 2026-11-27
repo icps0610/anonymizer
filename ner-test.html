@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NER 測試｜中文人名辨識</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z' fill='%230969da'/%3E%3Crect x='7' y='10' width='10' height='3' rx='1' fill='%23fff'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --text: #1f2328; --muted: #656d76;
+    --border: #d0d7de; --accent: #0969da; --accent-weak: #ddf4ff; --ok: #1a7f37; --warn: #9a6700; --err: #cf222e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0d1117; --card: #161b22; --text: #e6edf3; --muted: #8d96a0;
+      --border: #30363d; --accent: #4493f8; --accent-weak: #102a4c; --ok: #3fb950; --warn: #d29922; --err: #f85149; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, "Segoe UI", "Microsoft JhengHei", sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.5; }
+  .wrap { max-width: 1300px; margin: 0 auto; padding: 20px 16px 40px; }
+  .title { display: flex; align-items: baseline; gap: 10px; margin-bottom: 16px; min-width: 0; }
+  h1 { font-size: 1.35rem; margin: 0; white-space: nowrap; }
+  .sub { color: var(--muted); font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  /* 主內容在左、操作面板在右 */
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 14px; align-items: start; }
+  @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+  .side { position: sticky; top: 12px; display: flex; flex-direction: column; gap: 14px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+  main .card { margin-bottom: 14px; }
+  .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 8px; flex-wrap: wrap; }
+  h2 { font-size: 1rem; margin: 0; }
+  .side h2 { margin-bottom: 10px; }
+  textarea, select { font-family: Consolas, "Cascadia Code", monospace; font-size: .85rem; background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+  textarea { width: 100%; min-height: 220px; resize: vertical; }
+  select { font-family: inherit; padding: 5px 8px; width: 100%; }
+  label { font-size: .9rem; cursor: pointer; }
+  .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+  .field > span { font-size: .85rem; color: var(--muted); }
+  button { font: inherit; font-size: .85rem; padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--card); color: var(--text); cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button:hover { filter: brightness(1.08); }
+  button:disabled { opacity: .5; cursor: default; }
+  .btns { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .hint { font-size: .8rem; color: var(--muted); }
+  .stat { font-size: .85rem; color: var(--muted); margin-top: 6px; }
+  .outbox { min-height: 120px; max-height: 60vh; overflow: auto; white-space: pre-wrap; word-break: break-all;
+    font-family: Consolas, "Cascadia Code", monospace; font-size: .9rem; line-height: 1.8;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
+  mark.ent { background: color-mix(in srgb, var(--c) 18%, transparent); color: inherit; border-bottom: 2px solid var(--c);
+    border-radius: 3px; padding: 0 2px; }
+  mark.ent::after { content: attr(data-type); font-size: .65rem; color: var(--c); margin-left: 2px; vertical-align: super; font-family: system-ui, sans-serif; }
+  .progress { height: 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 999px; overflow: hidden; margin: 10px 0 4px; }
+  .progress > div { height: 100%; width: 0; background: var(--accent); transition: width .15s; }
+  .types { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 10px; }
+  .types label { display: flex; align-items: center; gap: 6px; font-size: .82rem; }
+  .types .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--c); flex: none; }
+  .types .cnt { color: var(--muted); margin-left: auto; font-variant-numeric: tabular-nums; }
+  dl.stats { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin: 0; font-size: .85rem; }
+  dl.stats dt { color: var(--muted); }
+  dl.stats dd { margin: 0; font-variant-numeric: tabular-nums; word-break: break-all; }
+  .log { font-family: Consolas, monospace; font-size: .75rem; max-height: 220px; overflow: auto; display: flex; flex-direction: column; gap: 2px; }
+  .log .warn { color: var(--warn); } .log .error { color: var(--err); }
+  table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border); word-break: break-all; }
+  th { color: var(--muted); font-weight: 600; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .row { display: flex; align-items: center; gap: 8px; font-size: .85rem; }
+  .row input[type=range] { flex: 1; }
+  .ok { color: var(--ok); } .warnc { color: var(--warn); } .errc { color: var(--err); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="title">
+    <h1>NER 測試：中文人名辨識</h1>
+    <span class="sub" title="模型：Xenova/bert-base-chinese-ner（中研院 CKIP bert-base-chinese-ner 的 ONNX 版）。文字只在本機瀏覽器處理">模型：Xenova/bert-base-chinese-ner（中研院 CKIP bert-base-chinese-ner 的 ONNX 版）。文字只在本機瀏覽器處理</span>
+  </div>
+
+  <div class="layout">
+    <main>
+      <div class="card">
+        <div class="panel-head"><h2>原始文字</h2>
+          <div class="btns">
+            <button id="btnSample">範例</button>
+            <button id="btnClear">清除</button>
+          </div>
+        </div>
+        <textarea id="input" spellcheck="false" placeholder="貼上要測試的文字…"></textarea>
+        <div class="stat" id="inputStat">0 字</div>
+      </div>
+
+      <div class="card">
+        <div class="panel-head"><h2>辨識結果</h2><span class="hint" id="resultStat"></span></div>
+        <div id="output" class="outbox"><span class="hint">載入模型後會在這裡標示辨識到的實體。</span></div>
+      </div>
+
+      <div class="card">
+        <div class="panel-head"><h2>實體清單</h2><span class="hint">同類型、同文字合併計數</span></div>
+        <table>
+          <thead><tr><th style="width:8em">類型</th><th>文字</th><th style="width:4em">次數</th><th style="width:6em">平均信心</th></tr></thead>
+          <tbody id="entBody"><tr><td colspan="4" class="hint">尚無資料</td></tr></tbody>
+        </table>
+      </div>
+    </main>
+
+    <aside class="side">
+      <div class="card">
+        <h2>模型</h2>
+        <label class="field"><span>模型精度</span>
+          <select id="dtype">
+            <option value="q8">q8 量化（約 98 MB，建議）</option>
+            <option value="fp16">fp16（約 194 MB，適合 WebGPU）</option>
+            <option value="fp32">fp32 原始（約 388 MB）</option>
+          </select>
+        </label>
+        <label class="field"><span>執行裝置</span>
+          <select id="device">
+            <option value="wasm">WASM（CPU）</option>
+            <option value="webgpu">WebGPU（GPU）</option>
+          </select>
+        </label>
+        <div class="btns">
+          <button class="primary" id="btnLoad">載入模型</button>
+          <button id="btnClearCache" title="只刪除這個模型的快取檔案，下次載入會重新下載">清除模型快取</button>
+        </div>
+        <div class="progress"><div id="bar"></div></div>
+        <div class="hint" id="progressText">尚未載入</div>
+        <div class="hint" id="cacheInfo" style="margin-top:6px"></div>
+      </div>
+
+      <div class="card">
+        <h2>辨識</h2>
+        <div class="btns" style="margin-bottom:10px">
+          <button class="primary" id="btnRun" disabled>辨識</button>
+          <label class="row"><input type="checkbox" id="auto" checked>輸入時自動辨識</label>
+        </div>
+        <div class="row" style="margin-bottom:10px">
+          <span>最低信心</span><input type="range" id="minScore" min="0" max="0.99" step="0.01" value="0.5"><span id="minScoreVal">0.50</span>
+        </div>
+        <div class="types" id="types"></div>
+        <div class="btns" style="margin-top:8px">
+          <button id="btnTypesAll">全選</button>
+          <button id="btnTypesPerson">只看人名</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>耗時</h2>
+        <dl class="stats">
+          <dt>函式庫</dt><dd id="statLib">—</dd>
+          <dt>取得模型檔</dt><dd id="statFetch">—</dd>
+          <dt>初始化</dt><dd id="statInit">—</dd>
+          <dt>首次推論</dt><dd id="statWarm">—</dd>
+          <dt>最近一次</dt><dd id="statRun">—</dd>
+        </dl>
+        <div class="hint" style="margin-top:8px">初始化包含 ONNX Runtime 執行檔（約 26 MB），第一次會下載，之後從瀏覽器快取讀取。</div>
+      </div>
+
+      <div class="card">
+        <h2>記錄</h2>
+        <div class="log" id="log"></div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script type="module">
+// ===== 設定 =====
+const LIB_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.2/dist/transformers.min.js';
+const MODEL_ID = 'Xenova/bert-base-chinese-ner';
+const MODEL_FILES = { q8: 'onnx/model_quantized.onnx', fp16: 'onnx/model_fp16.onnx', fp32: 'onnx/model.onnx' };
+const CACHE_NAME = 'transformers-cache';   // transformers.js 預設的 Cache Storage 名稱
+const MAX_TOKENS = 510;                     // BERT 上限 512，扣掉 [CLS]、[SEP]
+
+// CKIP 模型的 18 種實體（OntoNotes 標記），標籤格式為 B-/I-/E-/S- 加類型
+const TYPE_INFO = {
+  PERSON: ['人名', '#cf222e'], ORG: ['組織', '#8250df'], GPE: ['國家城市', '#0969da'], LOC: ['地點', '#1a7f37'],
+  FAC: ['建築設施', '#bf8700'], NORP: ['族群團體', '#bc4c00'], EVENT: ['事件', '#e85aad'], PRODUCT: ['產品', '#1b7c83'],
+  WORK_OF_ART: ['作品', '#6e7781'], LAW: ['法律', '#6e7781'], LANGUAGE: ['語言', '#6e7781'], DATE: ['日期', '#57606a'],
+  TIME: ['時間', '#57606a'], PERCENT: ['百分比', '#57606a'], MONEY: ['金額', '#57606a'], QUANTITY: ['數量', '#57606a'],
+  ORDINAL: ['序數', '#57606a'], CARDINAL: ['數字', '#57606a'],
+};
+
+const SAMPLE = `王志明今天跟林雅婷在林口開會，討論程式連線逾時的問題。
+陳建宏說游標曾經卡住許多次，方法是重新安裝驅動程式。
+請把報告寄給張簡美玲經理，副本給歐陽志遠。
+高雄分公司的黃金山下週會到台北總部，周一下午三點在中正路的會議室。
+log: C:\\Users\\wang.zm\\Documents\\專案\\會議紀錄.docx 由 李家豪 於 2026/11/20 修改
+阿傑跟小明昨天一起去吃飯，林先生也有來。`;
+
+// ===== 狀態 =====
+const $ = (id) => document.getElementById(id);
+const state = {
+  T: null, tokenizer: null, model: null, loadedKey: '', id2label: null,
+  clsId: 101, sepId: 102, unkId: 100, charCache: new Map(),
+  spans: [], text: '', busy: false, loading: false, pending: false,
+};
+
+// ===== 工具函式 =====
+function log(msg, level = 'info') {
+  const t = new Date().toLocaleTimeString('zh-TW', { hour12: false });
+  const div = document.createElement('div');
+  div.className = level;
+  div.textContent = `${t} ${msg}`;
+  $('log').prepend(div);
+  (level === 'error' ? console.error : level === 'warn' ? console.warn : console.log)('[NER]', msg);
+}
+const fmtMB = (b) => (b / 1048576).toFixed(1) + ' MB';
+const fmtMs = (ms) => ms >= 1000 ? (ms / 1000).toFixed(2) + ' 秒' : Math.round(ms) + ' ms';
+const setStat = (id, v) => { $(id).textContent = v; };
+
+function setButtons() {
+  $('btnLoad').disabled = state.loading;
+  $('btnClearCache').disabled = state.loading;
+  $('btnRun').disabled = state.loading || !state.model;
+  $('dtype').disabled = state.loading;
+  $('device').disabled = state.loading;
+}
+
+// ===== 快取 =====
+function modelFileURL(dtype) {
+  return `https://huggingface.co/${MODEL_ID}/resolve/main/${MODEL_FILES[dtype]}`;
+}
+async function openCache() {
+  if (!('caches' in window)) return null;
+  try { return await caches.open(CACHE_NAME); } catch (e) { return null; }
+}
+async function isModelCached(dtype) {
+  const cache = await openCache();
+  if (!cache) return null;   // null = 無法判斷（例如用 file:// 開啟）
+  return !!(await cache.match(modelFileURL(dtype)));
+}
+async function updateCacheInfo() {
+  const cache = await openCache();
+  if (!cache) { $('cacheInfo').textContent = '此環境無法使用瀏覽器快取（file:// 開啟時常見），每次都會重新下載'; return; }
+  const cached = [];
+  for (const d of Object.keys(MODEL_FILES)) if (await cache.match(modelFileURL(d))) cached.push(d);
+  let usage = '';
+  try { const est = await navigator.storage.estimate(); usage = `，本網域已用 ${fmtMB(est.usage || 0)}`; } catch (e) { /* 不支援就略過 */ }
+  $('cacheInfo').textContent = `已快取：${cached.length ? cached.join('、') : '無'}${usage}`;
+}
+async function clearModelCache() {
+  const cache = await openCache();
+  if (!cache) { log('此環境無法使用瀏覽器快取', 'warn'); return; }
+  let n = 0;
+  for (const req of await cache.keys()) {
+    if (req.url.includes(`/${MODEL_ID}/`)) { await cache.delete(req); n++; }
+  }
+  // 記憶體中的模型也一併釋放，下次載入才會真的重新下載
+  if (state.model) { try { await state.model.dispose(); } catch (e) { /* 忽略 */ } }
+  state.model = null; state.tokenizer = null; state.loadedKey = '';
+  setButtons();
+  $('progressText').textContent = '已清除，尚未載入';
+  $('bar').style.width = '0';
+  log(`已清除 ${n} 個模型快取檔案`);
+  updateCacheInfo();
+}
+
+// ===== 載入 =====
+async function loadLib() {
+  if (state.T) return state.T;
+  const t0 = performance.now();
+  log('載入 transformers.js…');
+  try {
+    state.T = await import(LIB_URL);
+  } catch (e) {
+    throw new Error(`無法載入 transformers.js（${LIB_URL}）：${e.message}`);
+  }
+  state.T.env.allowLocalModels = false;
+  setStat('statLib', fmtMs(performance.now() - t0));
+  log(`transformers.js ${state.T.env.version || ''} 載入完成`);
+  return state.T;
+}
+
+async function checkWebGPU() {
+  if (!navigator.gpu) throw new Error('此瀏覽器不支援 WebGPU（navigator.gpu 不存在）');
+  const adapter = await navigator.gpu.requestAdapter();
+  if (!adapter) throw new Error('找不到可用的 WebGPU 介面卡');
+}
+
+async function loadModel() {
+  const dtype = $('dtype').value, device = $('device').value;
+  const key = `${dtype}|${device}`;
+  if (state.model && state.loadedKey === key) { log('相同設定的模型已載入'); return; }
+  state.loading = true; setButtons();
+  try {
+    if (device === 'webgpu') await checkWebGPU();
+    if (device === 'wasm' && dtype === 'fp16') log('WASM 執行 fp16 通常比 q8 慢，建議 fp16 搭配 WebGPU', 'warn');
+    const T = await loadLib();
+    if (state.model) { try { await state.model.dispose(); } catch (e) { /* 忽略 */ } state.model = null; }
+
+    const cached = await isModelCached(dtype);
+    log(cached === true ? '模型檔已在瀏覽器快取，從快取讀取' : cached === false ? '模型檔不在快取，開始下載' : '無法檢查快取，直接下載');
+
+    const files = {};
+    let lastDone = 0, lastPaint = 0;
+    const onProgress = (p) => {
+      if (p.status === 'initiate') log(`取得 ${p.file}`);
+      else if (p.status === 'done') { lastDone = performance.now(); log(`完成 ${p.file}`); }
+      else if (p.status === 'progress' && p.file) {
+        files[p.file] = { loaded: p.loaded || 0, total: p.total || 0 };
+        const now = performance.now();
+        if (now - lastPaint < 100 && p.loaded !== p.total) return;
+        lastPaint = now;
+        const loaded = Object.values(files).reduce((a, f) => a + f.loaded, 0);
+        const total = Object.values(files).reduce((a, f) => a + f.total, 0);
+        $('bar').style.width = total ? (loaded / total * 100).toFixed(1) + '%' : '0';
+        $('progressText').textContent = `${p.file}　${fmtMB(loaded)} / ${fmtMB(total)}`;
+      }
+    };
+
+    const t0 = performance.now();
+    const tokenizer = await T.AutoTokenizer.from_pretrained(MODEL_ID, { progress_callback: onProgress });
+    const model = await T.AutoModelForTokenClassification.from_pretrained(MODEL_ID, { dtype, device, progress_callback: onProgress });
+    const t1 = performance.now();
+    if (!lastDone) lastDone = t1;
+
+    state.tokenizer = tokenizer;
+    state.model = model;
+    state.id2label = model.config.id2label;
+    state.clsId = tokenizer.convert_tokens_to_ids('[CLS]') ?? 101;
+    state.sepId = tokenizer.convert_tokens_to_ids('[SEP]') ?? 102;
+    state.unkId = tokenizer.convert_tokens_to_ids('[UNK]') ?? 100;
+    state.charCache.clear();
+    state.loadedKey = key;
+
+    const bytes = Object.values(files).reduce((a, f) => a + f.total, 0);
+    const fetchMs = lastDone - t0;
+    const speed = bytes / 1048576 / (fetchMs / 1000);
+    setStat('statFetch', bytes > 0
+      ? `${fmtMs(fetchMs)}，${fmtMB(bytes)}（${cached ? '快取' : '下載'}，${speed.toFixed(1)} MB/s）`
+      : `${fmtMs(fetchMs)}（${cached ? '快取' : '下載'}）`);
+    setStat('statInit', fmtMs(t1 - lastDone));
+    $('bar').style.width = '100%';
+    $('progressText').textContent = `已載入 ${dtype}／${device === 'wasm' ? 'WASM' : 'WebGPU'}`;
+    log(`模型載入完成，共 ${fmtMs(t1 - t0)}`);
+
+    // 首次推論通常較慢（初始化、WebGPU 編譯 shader），單獨計時
+    const tw = performance.now();
+    await runChunk(buildTokens('王小明在台北。'));
+    setStat('statWarm', fmtMs(performance.now() - tw));
+  } catch (e) {
+    log(`載入失敗：${e.message}`, 'error');
+    console.error(e);
+    $('progressText').textContent = '載入失敗，詳見記錄';
+  } finally {
+    state.loading = false; setButtons();
+    updateCacheInfo();
+  }
+  if (state.model && $('input').value.trim()) recognize();
+}
+
+// ===== 斷詞：自己切 token 並記住每個 token 在原文的位置 =====
+// 中文、標點每字一個 token；連續英數字交給 WordPiece 切；空白略過
+function buildTokens(text) {
+  const { tokenizer, charCache, unkId } = state;
+  const out = [];
+  const re = /[A-Za-z0-9]+|\s+|[\s\S]/gu;
+  let m;
+  while ((m = re.exec(text))) {
+    const s = m.index, str = m[0];
+    if (/^\s/.test(str)) continue;
+    if (/^[A-Za-z0-9]/.test(str)) {
+      const pieces = tokenizer.tokenize(str);
+      const lens = pieces.map((p) => p.replace(/^##/, '').length);
+      const ok = pieces.length > 0 && !pieces.includes('[UNK]') && lens.reduce((a, b) => a + b, 0) === str.length;
+      if (!ok) { out.push({ id: unkId, s, e: s + str.length }); continue; }
+      const ids = tokenizer.convert_tokens_to_ids(pieces);
+      let p = s;
+      for (let i = 0; i < pieces.length; i++) { out.push({ id: ids[i] ?? unkId, s: p, e: p + lens[i] }); p += lens[i]; }
+      continue;
+    }
+    let id = charCache.get(str);
+    if (id === undefined) {
+      const toks = tokenizer.tokenize(str);
+      id = toks.length === 0 ? null : toks.length === 1 ? (tokenizer.convert_tokens_to_ids(toks[0]) ?? unkId) : unkId;
+      charCache.set(str, id);
+    }
+    if (id !== null) out.push({ id, s, e: s + str.length });   // null = 被正規化移除的字元（控制字元等）
+  }
+  return out;
+}
+
+// 超過 510 個 token 就分段，盡量切在換行或句尾標點
+function chunkTokens(text, toks) {
+  const chunks = [];
+  let start = 0;
+  while (start < toks.length) {
+    let end = Math.min(start + MAX_TOKENS, toks.length);
+    if (end < toks.length) {
+      for (let i = end - 1; i > start + MAX_TOKENS / 2; i--) {
+        if (text.slice(toks[i].e, toks[i + 1].s).includes('\n') || /[。！？!?；;]/.test(text.slice(toks[i].s, toks[i].e))) { end = i + 1; break; }
+      }
+    }
+    chunks.push(toks.slice(start, end));
+    start = end;
+  }
+  return chunks;
+}
+
+async function runChunk(toks) {
+  const { T, model, clsId, sepId } = state;
+  if (toks.length === 0) return [];
+  const ids = [clsId, ...toks.map((t) => t.id), sepId];
+  const n = ids.length;
+  const input_ids = new T.Tensor('int64', BigInt64Array.from(ids, (x) => BigInt(x)), [1, n]);
+  const attention_mask = new T.Tensor('int64', new BigInt64Array(n).fill(1n), [1, n]);
+  const token_type_ids = new T.Tensor('int64', new BigInt64Array(n), [1, n]);
+  const out = await model({ input_ids, attention_mask, token_type_ids });
+  let logits = out.logits;
+  if (logits.type !== 'float32') logits = logits.to('float32');
+  const L = logits.dims[2], data = logits.data;
+  const preds = [];
+  for (let i = 0; i < toks.length; i++) {
+    const off = (i + 1) * L;   // +1 跳過 [CLS]
+    let best = 0, bv = -Infinity;
+    for (let k = 0; k < L; k++) if (data[off + k] > bv) { bv = data[off + k]; best = k; }
+    let sum = 0;
+    for (let k = 0; k < L; k++) sum += Math.exp(data[off + k] - bv);
+    preds.push({ label: state.id2label[best] ?? 'O', score: 1 / sum });
+  }
+  return preds;
+}
+
+// BIES 標籤組回實體區段
+function decodeSpans(toks, preds, text) {
+  const spans = [];
+  let cur = null;
+  const close = () => { if (cur) { spans.push(cur); cur = null; } };
+  for (let i = 0; i < toks.length; i++) {
+    const { label, score } = preds[i];
+    if (label === 'O') { close(); continue; }
+    const m = /^([BIES])-(.+)$/.exec(label);
+    const [p, type] = m ? [m[1], m[2]] : ['I', label];
+    if (p === 'B' || p === 'S' || !cur || cur.type !== type) {
+      close();
+      cur = { type, s: toks[i].s, e: toks[i].e, scores: [score] };
+    } else {
+      cur.e = toks[i].e;
+      cur.scores.push(score);
+    }
+    if (p === 'S' || p === 'E') close();
+  }
+  close();
+  return spans.map((sp) => ({
+    type: sp.type, s: sp.s, e: sp.e, text: text.slice(sp.s, sp.e),
+    score: sp.scores.reduce((a, b) => a + b, 0) / sp.scores.length,
+  }));
+}
+
+async function recognize() {
+  if (!state.model) return;
+  if (state.busy) { state.pending = true; return; }
+  state.busy = true;
+  const text = $('input').value;
+  try {
+    const t0 = performance.now();
+    const toks = buildTokens(text);
+    const chunks = chunkTokens(text, toks);
+    const spans = [];
+    for (const c of chunks) spans.push(...decodeSpans(c, await runChunk(c), text));
+    const ms = performance.now() - t0;
+    state.spans = spans;
+    state.text = text;
+    setStat('statRun', `${fmtMs(ms)}（${text.length} 字、${toks.length} tokens、${chunks.length} 段）`);
+    render();
+  } catch (e) {
+    log(`辨識失敗：${e.message}`, 'error');
+    console.error(e);
+  } finally {
+    state.busy = false;
+    if (state.pending) { state.pending = false; recognize(); }
+  }
+}
+
+// ===== 顯示 =====
+function enabledTypes() {
+  return new Set([...document.querySelectorAll('#types input:checked')].map((el) => el.value));
+}
+
+function render() {
+  const enabled = enabledTypes();
+  const min = +$('minScore').value;
+  const passed = state.spans.filter((sp) => sp.score >= min);
+  const shown = passed.filter((sp) => enabled.has(sp.type));
+
+  // 各類型數量（已套用信心門檻）
+  const counts = {};
+  for (const sp of passed) counts[sp.type] = (counts[sp.type] || 0) + 1;
+  for (const el of document.querySelectorAll('#types .cnt')) el.textContent = counts[el.dataset.type] || '';
+
+  // 標示原文
+  const out = $('output');
+  out.textContent = '';
+  const text = state.text;
+  let p = 0;
+  for (const sp of shown) {
+    if (sp.s > p) out.append(text.slice(p, sp.s));
+    const [name, color] = TYPE_INFO[sp.type] || [sp.type, '#6e7781'];
+    const mark = document.createElement('mark');
+    mark.className = 'ent';
+    mark.style.setProperty('--c', color);
+    mark.dataset.type = name;
+    mark.title = `${name}（${sp.type}）信心 ${(sp.score * 100).toFixed(1)}%`;
+    mark.textContent = sp.text;
+    out.append(mark);
+    p = sp.e;
+  }
+  out.append(text.slice(p));
+  $('resultStat').textContent = `顯示 ${shown.length} 個，共辨識 ${state.spans.length} 個`;
+
+  // 清單
+  const groups = new Map();
+  for (const sp of shown) {
+    const k = sp.type + '\u0000' + sp.text;
+    const g = groups.get(k) || { type: sp.type, text: sp.text, n: 0, sum: 0 };
+    g.n++; g.sum += sp.score;
+    groups.set(k, g);
+  }
+  const order = Object.keys(TYPE_INFO);
+  const rows = [...groups.values()].sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type));
+  const body = $('entBody');
+  body.textContent = '';
+  if (!rows.length) {
+    const tr = body.insertRow(); const td = tr.insertCell(); td.colSpan = 4; td.className = 'hint'; td.textContent = '沒有符合條件的實體';
+    return;
+  }
+  for (const g of rows) {
+    const tr = body.insertRow();
+    const [name, color] = TYPE_INFO[g.type] || [g.type, '#6e7781'];
+    const c0 = tr.insertCell(); c0.textContent = name; c0.style.color = color;
+    tr.insertCell().textContent = g.text;
+    const c2 = tr.insertCell(); c2.className = 'num'; c2.textContent = g.n;
+    const c3 = tr.insertCell(); c3.className = 'num'; c3.textContent = (g.sum / g.n * 100).toFixed(1) + '%';
+  }
+}
+
+function buildTypeFilters() {
+  const box = $('types');
+  for (const [type, [name, color]] of Object.entries(TYPE_INFO)) {
+    const label = document.createElement('label');
+    label.style.setProperty('--c', color);
+    label.title = type;
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.value = type; cb.checked = type === 'PERSON';
+    cb.addEventListener('change', () => state.model && render());
+    const dot = document.createElement('span'); dot.className = 'dot';
+    const txt = document.createElement('span'); txt.textContent = name;
+    const cnt = document.createElement('span'); cnt.className = 'cnt'; cnt.dataset.type = type;
+    label.append(cb, dot, txt, cnt);
+    box.append(label);
+  }
+}
+
+// ===== 事件 =====
+let timer = 0;
+$('input').addEventListener('input', () => {
+  $('inputStat').textContent = `${$('input').value.length} 字`;
+  if (!$('auto').checked || !state.model) return;
+  clearTimeout(timer);
+  timer = setTimeout(recognize, 500);
+});
+$('btnSample').addEventListener('click', () => { $('input').value = SAMPLE; $('input').dispatchEvent(new Event('input')); });
+$('btnClear').addEventListener('click', () => { $('input').value = ''; $('input').dispatchEvent(new Event('input')); });
+$('btnLoad').addEventListener('click', loadModel);
+$('btnClearCache').addEventListener('click', clearModelCache);
+$('btnRun').addEventListener('click', recognize);
+$('minScore').addEventListener('input', () => { $('minScoreVal').textContent = (+$('minScore').value).toFixed(2); if (state.model) render(); });
+$('btnTypesAll').addEventListener('click', () => { document.querySelectorAll('#types input').forEach((el) => { el.checked = true; }); if (state.model) render(); });
+$('btnTypesPerson').addEventListener('click', () => { document.querySelectorAll('#types input').forEach((el) => { el.checked = el.value === 'PERSON'; }); if (state.model) render(); });
+window.addEventListener('unhandledrejection', (e) => log(`未處理的錯誤：${e.reason?.message || e.reason}`, 'error'));
+
+// ===== 初始化 =====
+buildTypeFilters();
+$('input').value = SAMPLE;
+$('inputStat').textContent = `${SAMPLE.length} 字`;
+if (!navigator.gpu) {
+  const opt = $('device').querySelector('option[value=webgpu]');
+  opt.disabled = true; opt.textContent += '：此瀏覽器不支援';
+}
+if (location.protocol === 'file:') log('目前用 file:// 開啟，瀏覽器快取可能無法使用；建議用 GitHub Pages 開啟測試', 'warn');
+updateCacheInfo();
+setButtons();
+</script>
+</body>
+</html>
