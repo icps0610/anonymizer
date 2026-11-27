@@ -293,7 +293,7 @@
         <button id="btnKwImport" title="上傳設定 JSON（關鍵字與 Regex 會與目前內容合併，勾選項目會套用）或純文字關鍵字檔"><svg class="ic"><use href="#i-upload"/></svg>上傳匯入</button>
         <button id="btnKwSaveDef" title="把目前關鍵字、Regex 與勾選項目存成預設"><svg class="ic"><use href="#i-spark"/></svg>存為預設</button>
         <button id="btnKwLoadDef" title="用預設的關鍵字、Regex 與勾選項目覆蓋目前內容"><svg class="ic"><use href="#i-refresh"/></svg>載入預設</button>
-        <button id="btnKwClear" title="清空關鍵字與 Regex"><svg class="ic"><use href="#i-trash"/></svg>清空</button>
+        <button id="btnKwClear" title="清空關鍵字、Regex 與白名單"><svg class="ic"><use href="#i-trash"/></svg>清空</button>
         <span class="toast" id="toastKw"></span>
       </div>
       <input type="file" id="kwFile" accept=".json,.txt,.csv,text/plain,application/json" hidden>
@@ -2114,7 +2114,7 @@ VTLw7onLRnrq0/IzW7yWR7QkrmBL7jTKEn5u+qKhbwKfBstIs+bMY2Zkp18gnTxK
     if (d.allow) $('allowList').value = d.allow.join('\n');
     setKw(d.keywords, d.options ? '已載入預設（關鍵字、Regex、白名單與勾選項目）' : '已載入預設（關鍵字）');
   };
-  $('btnKwClear').onclick = () => { $('regexes').value = ''; setKw([], '已清空關鍵字與 Regex'); };
+  $('btnKwClear').onclick = () => { $('regexes').value = ''; $('allowList').value = ''; setKw([], '已清空關鍵字、Regex 與白名單'); };
   // 可摺疊區塊：預設收起，依使用者上次的狀態還原（各自記住）
   [['optsCard', LS_UI], ['batchCard', 'anonymizer.ui.batch.v1'], ['restoreCard', 'anonymizer.ui.restore.v1'], ['mapCard', 'anonymizer.ui.map.v1']].forEach(([id, key]) => {
     try { $(id).open = localStorage.getItem(key) === 'open'; } catch { /* 忽略 */ }
